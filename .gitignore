@@ -7,3 +7,5 @@ valorian.db
 .pytest_cache/
 .ipynb_checkpoints/
 .DS_Store
+# QLFS microdata — download separately, see data/README.md
+data/*.csv
