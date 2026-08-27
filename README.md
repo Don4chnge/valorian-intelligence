@@ -61,6 +61,28 @@ Alerts:
 ```
 
 ---
+---
+
+## DriftScore
+
+Everything above is evidence: a PSI per feature, a p-value, a performance delta. That is the right output for someone doing a diagnosis and the wrong output for someone deciding whether to care. DriftScore collapses it into one number where 100 is a model behaving as it did at training time and 0 is a model that has fallen apart.
+
+| Batch | DriftScore | Band |
+|---|---|---|
+| 2026-03 | 100 | healthy |
+| 2026-04 | 95 | healthy |
+| 2026-05 | 99 | healthy |
+| 2026-06 | 61 | degraded |
+| 2026-07 | 76 | watch |
+| 2026-08 | 60 | degraded |
+
+Three weighted components: performance against baseline (0.70), worst-feature PSI (0.20), and share of features drifted (0.10).
+
+Performance dominates because input drift predicts trouble rather than evidencing it, and this dataset contains the counterexample directly. Month 07 has the worst input drift in the series and a model performing at baseline; month 08 has no detectable input drift and a model that has lost 11% of its power. Weighting those equally would score the healthy month as the crisis. It does not go higher than 0.70 because above roughly 0.80 the input terms stop moving the number at all, and a formula with two decorative terms should not claim to include them.
+
+When labels have not arrived yet — which for credit or churn can mean months — the performance component cannot be computed. The score then falls back to the input terms alone and reports `mode="inputs_only"`. That number answers a different question and should not be plotted on the same line as a full score without saying so.
+
+**Calibration status:** these weights were tuned against the synthetic demo series, which is circular — the same data that motivated the design was used to check it. They are a starting hypothesis, not validated constants. Re-tuning against real data with known outcomes is the next milestone.
 
 ## Usage
 
