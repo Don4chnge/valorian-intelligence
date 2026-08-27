@@ -18,6 +18,7 @@ from .drift import (
     PSI_MODERATE,
     PSI_SIGNIFICANT,
 )
+from .driftscore import DriftScore, band_for, compute_driftscore, score_report
 from .monitor import ModelMonitor, MonitoringReport
 from .performance import PerformanceDrift, compare_performance, rolling_performance, score
 from .store import MonitoringStore
@@ -28,6 +29,10 @@ __all__ = [
     "ModelMonitor",
     "MonitoringReport",
     "MonitoringStore",
+    "DriftScore",
+    "compute_driftscore",
+    "score_report",
+    "band_for",
     "FeatureDrift",
     "PerformanceDrift",
     "detect_drift",

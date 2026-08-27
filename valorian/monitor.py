@@ -14,6 +14,7 @@ from pathlib import Path
 import pandas as pd
 
 from .drift import detect_drift
+from .driftscore import DriftScore, score_report
 from .performance import compare_performance
 from .store import MonitoringStore
 
@@ -26,6 +27,11 @@ class MonitoringReport:
     performance: dict | None = None
     alerts: list[str] = field(default_factory=list)
     run_id: int | None = None
+
+    @property
+    def driftscore(self) -> DriftScore:
+        """Composite 0-100 health score for this run."""
+        return score_report(self.drift, self.performance)
 
     @property
     def status(self) -> str:
@@ -43,10 +49,12 @@ class MonitoringReport:
         return self.drift.loc[self.drift["drifted"], "feature"].tolist()
 
     def summary(self) -> str:
+        ds = self.driftscore
         lines = [
             f"Model:  {self.model_name}",
             f"Batch:  {self.batch_label or 'unlabelled'}",
             f"Status: {self.status.upper()}",
+            f"Score:  {ds.score:.0f}/100 ({ds.band})",
             "",
             f"{len(self.drift)} features checked, {len(self.drifted_features)} drifted",
         ]
