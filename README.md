@@ -1,5 +1,9 @@
 # Valorian Intelligence
 
+![tests](https://github.com/Don4chnge/valorian-intelligence/actions/workflows/tests.yml/badge.svg)
+
+**[Live dashboard](https://valorian-intelligence.streamlit.app)** · [Roadmap](ROADMAP.md)
+
 **ML observability: drift detection and performance monitoring for models already in production.**
 
 Most machine learning projects stop at the point a model is trained and a test-set score is reported. That is the easy half. The harder problem is that a model which scored well in January can be quietly wrong by August, because the world it was trained on has moved and nothing in the system announces it.
