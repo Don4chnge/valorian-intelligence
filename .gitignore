@@ -3,7 +3,7 @@ __pycache__/
 .venv/
 venv/
 .env
-valorian.db
+*.db
 .pytest_cache/
 .ipynb_checkpoints/
 .DS_Store
