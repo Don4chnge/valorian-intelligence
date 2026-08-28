@@ -80,9 +80,47 @@ Three weighted components: performance against baseline (0.70), worst-feature PS
 
 Performance dominates because input drift predicts trouble rather than evidencing it, and this dataset contains the counterexample directly. Month 07 has the worst input drift in the series and a model performing at baseline; month 08 has no detectable input drift and a model that has lost 11% of its power. Weighting those equally would score the healthy month as the crisis. It does not go higher than 0.70 because above roughly 0.80 the input terms stop moving the number at all, and a formula with two decorative terms should not claim to include them.
 
-When labels have not arrived yet — which for credit or churn can mean months — the performance component cannot be computed. The score then falls back to the input terms alone and reports `mode="inputs_only"`. That number answers a different question and should not be plotted on the same line as a full score without saying so.
+When labels have not arrived yet — which for credit or churn can mean months - the performance component cannot be computed. The score then falls back to the input terms alone and reports `mode="inputs_only"`. That number answers a different question and should not be plotted on the same line as a full score without saying so.
 
-**Calibration status:** these weights were tuned against the synthetic demo series, which is circular — the same data that motivated the design was used to check it. They are a starting hypothesis, not validated constants. Re-tuning against real data with known outcomes is the next milestone.
+**Calibration status:** these weights were tuned against the synthetic demo series, which is circular — the same data that motivated the design was used to check it. They are a starting hypothesis, not validated constants. They were subsequently checked against real QLFS data (see below), where they produced no false alarms across five quarters.
+
+## Validation on real data
+
+Everything above runs on synthetic data with drift injected on purpose. That proves the detector catches faults it was designed to catch, and DriftScore's weights were then tuned against the same series — circular on both counts.
+
+This section breaks the circle. An employment classifier is trained on one quarter of South African Quarterly Labour Force Survey microdata (Stats SA, ~30 000 households per quarter, one row per respondent) and monitored across the following five, with no drift injected anywhere.
+
+Features: gender, age, education status, province, geography type. Target: employed vs not, for respondents aged 15–64. Reference quarter 2021 Q4, baseline ROC-AUC 0.7579.
+
+| Quarter | n | Employed | Max PSI | Drifted | ROC-AUC | vs baseline | DriftScore | Band |
+|---|---|---|---|---|---|---|---|---|
+| 2022 Q1 | 31 184 | 33.5% | 0.0058 | 0 | 0.7455 | −1.6% | 94.0 | healthy |
+| 2022 Q2 | 35 897 | 36.1% | 0.0568 | 0 | 0.7399 | −2.4% | 89.4 | healthy |
+| 2022 Q3 | 39 753 | 36.7% | 0.0709 | 0 | 0.7550 | −0.4% | 95.8 | healthy |
+| 2022 Q4 | 41 171 | 37.1% | 0.0738 | 0 | 0.7535 | −0.6% | 95.0 | healthy |
+| 2023 Q1 | 41 443 | 37.8% | 0.0722 | 0 | 0.7486 | −1.2% | 92.8 | healthy |
+
+**No significant drift over five quarters.** No feature crosses the 0.10 PSI threshold, and the model loses about 1% of its discriminative power over fifteen months. A negative result, and the useful kind: across five real batches the detector produced zero false alarms. Calibration that only ever fires is worth nothing; this is the evidence that the thresholds do not.
+
+### What the run actually showed
+
+**Statistical significance and practical significance came apart, on their own.** Province drifts with a p-value of 7.33e-226 and a PSI of 0.0722 — overwhelming evidence of a shift far too small to affect any decision the model makes. At 41 000 rows per batch, a KS or chi-square test will reject almost any null hypothesis. This is the argument for leading with effect size rather than p-values, demonstrated on data that was not chosen to demonstrate it.
+
+**Data drift and concept drift separated cleanly.** The employment rate climbs from 33.5% to 37.8% across the window — a real post-COVID labour market recovery. Model performance holds. The population changed; the relationship between demographics and employment did not. Monitoring the target rate alone would have raised an alarm here, and it would have been wrong.
+
+**A hypothesis was tested and rejected.** Stats SA switched from telephone to face-to-face interviewing at 2022 Q1, and this window was chosen specifically to straddle that break. Nothing was detected — 2022 Q1 has the lowest PSI in the series. The interview mode did not move the distribution of age, gender, education, province or geography type. Reasonable in hindsight, but it was a prediction that could have failed and didn't hold.
+
+### Data quality note
+
+The 2022 Q1 release ships `Status` as text rather than numeric, using `1.797…e+308` (the IEEE double maximum) as a missing-value sentinel. This silently forces the column to object dtype, so a `== 1` comparison matches nothing and the quarter reports a 0% employment rate. `demo/run_qlfs.py` coerces the column and drops the sentinel. Worth knowing for anyone else using this release.
+
+### Reproducing
+
+The microdata is not committed — see [data/README.md](data/README.md) for the six files and where to get them, then:
+
+```bash
+python demo/run_qlfs.py
+```
 
 ## Usage
 
