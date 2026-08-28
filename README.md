@@ -1,5 +1,9 @@
 # Valorian Intelligence
 
+![tests](https://github.com/Don4chnge/valorian-intelligence/actions/workflows/tests.yml/badge.svg)
+
+**[Live dashboard](https://valorian-intelligence.streamlit.app)** · [Roadmap](ROADMAP.md)
+
 **ML observability: drift detection and performance monitoring for models already in production.**
 
 Most machine learning projects stop at the point a model is trained and a test-set score is reported. That is the easy half. The harder problem is that a model which scored well in January can be quietly wrong by August, because the world it was trained on has moved and nothing in the system announces it.
@@ -109,6 +113,32 @@ Features: gender, age, education status, province, geography type. Target: emplo
 **Data drift and concept drift separated cleanly.** The employment rate climbs from 33.5% to 37.8% across the window — a real post-COVID labour market recovery. Model performance holds. The population changed; the relationship between demographics and employment did not. Monitoring the target rate alone would have raised an alarm here, and it would have been wrong.
 
 **A hypothesis was tested and rejected.** Stats SA switched from telephone to face-to-face interviewing at 2022 Q1, and this window was chosen specifically to straddle that break. Nothing was detected — 2022 Q1 has the lowest PSI in the series. The interview mode did not move the distribution of age, gender, education, province or geography type. Reasonable in hindsight, but it was a prediction that could have failed and didn't hold.
+
+### Multivariate drift: what the per-feature tests missed
+
+Every detector above examines one feature at a time. That misses a whole class of shift — two features can hold perfectly stable marginal distributions while the relationship between them changes, and no univariate test can see it.
+
+`valorian/multivariate.py` reframes the question as a supervised problem. Label reference rows 0 and current rows 1, train a depth-limited random forest to tell them apart, and score it by cross-validated ROC-AUC. If the batches come from the same distribution, no classifier beats chance and the AUC sits near 0.50. Separability *is* drift. The classifier's feature importances then say which columns it used, which gives attribution for free.
+
+Run across the same six quarters:
+
+| Quarter | Max PSI | Univariate verdict | Multivariate AUC | Verdict |
+|---|---|---|---|---|
+| 2022 Q1 | 0.0058 | no drift | 0.514 | indistinguishable |
+| 2022 Q2 | 0.0568 | no drift | 0.565 | mild |
+| 2022 Q3 | 0.0709 | no drift | 0.575 | mild |
+| 2022 Q4 | 0.0738 | no drift | 0.573 | mild |
+| 2023 Q1 | 0.0722 | no drift | 0.579 | mild |
+
+The two columns disagree from 2022 Q2 onward. Province never crosses the 0.10 PSI threshold — its worst reading is 0.074, comfortably "stable" — yet the classifier separates the batches, and attribution puts Province at over half the signal in every quarter.
+
+A separability of 0.579 is close enough to chance that it deserves scepticism rather than a headline, so it was tested rather than asserted. Refitting on shuffled domain labels, none of 20 permutations reached the observed AUC (p = 0.048). The shift is small, and it is not noise.
+
+**What this does and does not say.** The joint distribution of the monitored features moved, mostly through Province. It does not say the model broke: ROC-AUC held within roughly 1% across all fifteen months. This is data drift without concept drift — the population changed, the relationship between demographics and employment did not. The two questions are separate and the tooling answers them separately.
+
+**The honest caveat.** p = 0.048 with 20 permutations is thin evidence. A serious claim would run several hundred. What is defensible today is narrower: a shift too small for threshold-based univariate monitoring to register is detectable by a joint-distribution test, and the direction of the finding is stable across four independent quarters.
+
+Reproduce with `python demo/permutation_check.py`.
 
 ### Data quality note
 
