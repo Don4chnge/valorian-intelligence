@@ -4,6 +4,7 @@ __pycache__/
 venv/
 .env
 *.db
+!demo.db
 .pytest_cache/
 .ipynb_checkpoints/
 .DS_Store
