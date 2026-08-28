@@ -28,7 +28,7 @@ from sklearn.preprocessing import StandardScaler
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from valorian import ModelMonitor, score  # noqa: E402
+from valorian import ModelMonitor, multivariate_drift, score  # noqa: E402
 
 RNG = np.random.default_rng(42)
 PROVINCES = ["Gauteng", "Western Cape", "KwaZulu-Natal", "Eastern Cape", "Limpopo"]
@@ -133,8 +133,13 @@ def main() -> None:
             y_pred_proba=proba,
         )
 
+        mv = multivariate_drift(
+            reference[FEATURES], batch[FEATURES], categorical=["province"]
+        )
+
         print("=" * 58)
         print(report.summary())
+        print(f"\n{mv}")
         print()
 
     print("=" * 58)

@@ -39,7 +39,7 @@ from sklearn.preprocessing import StandardScaler
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from valorian import ModelMonitor, score  # noqa: E402
+from valorian import ModelMonitor, multivariate_drift, score  # noqa: E402
 
 DATA = Path(__file__).resolve().parents[1] / "data"
 
@@ -146,6 +146,14 @@ def main() -> None:
         print(report.summary())
         print()
 
+        # Univariate tests look at one feature at a time. This asks whether
+        # the batches are distinguishable at all, which catches shifts in the
+        # relationships between features that no single-feature test can see.
+        mv = multivariate_drift(
+            reference[FEATURES], batch[FEATURES], categorical=CATEGORICAL
+        )
+        print(f"{mv}\n")
+
         ds = report.driftscore
         rows.append(
             {
@@ -158,6 +166,8 @@ def main() -> None:
                 "vs_base": f"{report.performance['relative_change']:+.1%}",
                 "score": ds.score,
                 "band": ds.band,
+                "mv_auc": mv.auc,
+                "mv": mv.separability,
             }
         )
 
