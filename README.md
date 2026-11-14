@@ -130,6 +130,8 @@ Features: gender, age, education status, province, geography type. Target: emplo
 
 **No significant drift over five quarters.** No feature crosses the 0.10 PSI threshold, and the model loses about 1% of its discriminative power over fifteen months. A negative result, and the useful kind: across five real batches the detector produced zero false alarms. Calibration that only ever fires is worth nothing; this is the evidence that the thresholds do not.
 
+**The small drop is real, and still not a problem.** At these batch sizes the 95% bootstrap interval on ROC-AUC is about ±0.005, and the baseline of 0.7579 sits above the interval in every quarter (2022 Q1: 0.740–0.751). So the 1–2% decline is not sampling noise. It is also well inside the 5% tolerance, which is the distinction the interval exists to make: detectable is not the same as material. One caution on the baseline itself — it was measured on the rows the model was trained on, so it is slightly optimistic, and some of that gap is the ordinary difference between in-sample and out-of-sample performance rather than anything changing over time.
+
 ### What the run actually showed
 
 **Statistical significance and practical significance came apart, on their own.** Province drifts with a p-value of 7.33e-226 and a PSI of 0.0722 — overwhelming evidence of a shift far too small to affect any decision the model makes. At 41 000 rows per batch, a KS or chi-square test will reject almost any null hypothesis. This is the argument for leading with effect size rather than p-values, demonstrated on data that was not chosen to demonstrate it.
@@ -154,15 +156,25 @@ Run across the same six quarters:
 | 2022 Q4 | 0.0738 | no drift | 0.573 | mild |
 | 2023 Q1 | 0.0722 | no drift | 0.579 | mild |
 
-The two columns disagree from 2022 Q2 onward. Province never crosses the 0.10 PSI threshold — its worst reading is 0.074, comfortably "stable" — yet the classifier separates the batches, and attribution puts Province at over half the signal in every quarter.
+The two columns disagree from 2022 Q2 onward. Province never crosses the 0.10 PSI threshold — its worst reading is 0.074, comfortably "stable" — yet the classifier separates the batches, and attribution puts Province well ahead of everything else in every one of those quarters: between 74% and 100% of the held-out separability, with geography type and education sharing the rest.
 
-A separability of 0.579 is close enough to chance that it deserves scepticism rather than a headline, so it was tested rather than asserted. Refitting on shuffled domain labels, none of 20 permutations reached the observed AUC (p = 0.048). The shift is small, and it is not noise.
+That figure was first reported as "over half", from the random forest's built-in importances. Those are computed on the training rows and favour features with many distinct values, and Province has nine levels against two for gender, so the claim was re-tested with permutation importance on held-out rows (shuffle one feature, measure the AUC lost). The finding held and got stronger: the built-in importances had been giving age a 16–20% share that disappears on held-out data. In 2022 Q1, where the batches are indistinguishable, the built-in method still split its attribution 44/25/17/8/7 across the five features; the held-out method reports nothing to attribute.
+
+A separability of 0.579 is close enough to chance that it deserves scepticism rather than a headline, so it was tested rather than asserted. Refitting on shuffled domain labels, none of 500 permutations reached the observed AUC (p = 0.002, the smallest value 500 shuffles can report). The shift is small, and it is not noise.
 
 **What this does and does not say.** The joint distribution of the monitored features moved, mostly through Province. It does not say the model broke: ROC-AUC held within roughly 1% across all fifteen months. This is data drift without concept drift — the population changed, the relationship between demographics and employment did not. The two questions are separate and the tooling answers them separately.
 
-**The honest caveat.** p = 0.048 with 20 permutations is thin evidence. A serious claim would run several hundred. What is defensible today is narrower: a shift too small for threshold-based univariate monitoring to register is detectable by a joint-distribution test, and the direction of the finding is stable across four independent quarters.
+**The honest caveats.** This was first run with 20 permutations, which cannot report anything below p = 0.048 however strong the signal; it has been re-run at 500. Three limits remain:
 
-Reproduce with `python demo/permutation_check.py`.
+- *The permutation test assumes rows are exchangeable, and these are not quite.* The QLFS samples dwellings, not people, so respondents in one household share a province and a geography type. Shuffling individual rows understates the noise, so the true p-value is somewhat larger than 0.002. A test that shuffled whole households would be the correct one.
+- *The four quarters are not independent.* The QLFS is a rotating panel: a sampled dwelling stays in for four consecutive quarters and a quarter of them are replaced each time. The reference quarter therefore shares dwellings with 2022 Q1–Q3, and consecutive monitored quarters share most of theirs. "Stable across four quarters" is partly the same households being counted again.
+- *Only 2023 Q1 was permutation-tested.*
+
+What is defensible is narrower: a shift too small for threshold-based univariate monitoring to register is detectable by a joint-distribution test, and it sits in Province.
+
+**A possible explanation, not an established one.** The provincial mix moving after 2022 Q1 is what one would expect if telephone collection reached some provinces' households less well than face-to-face does, with the composition recovering as each rotation group was re-interviewed in person; the batch size climbing from 31 000 to 41 000 over the same window fits that. If so, the "hypothesis tested and rejected" above was rejected too early: the mode change did not show up at the 2022 Q1 boundary, but may be what the multivariate test is picking up over the following year. This has not been checked against Stats SA's response rates by province and should be read as a lead.
+
+Reproduce with `python demo/permutation_check.py` (about 15 minutes).
 
 ### Data quality note
 
@@ -187,6 +199,7 @@ monitor = ModelMonitor(
     categorical=["province"],
     baseline_score=0.6697,
     metric="roc_auc",
+    multivariate=True,                 # optional — also test the joint distribution
 )
 
 report = monitor.check(
@@ -202,6 +215,8 @@ report.health            # {'data_quality': 'healthy', 'input_shift': 'stable',
                          #  'performance': 'degraded'}
 report.quality.issues    # e.g. ['monthly_income: null rate 0.4% -> 31.0% (+30.6 points)']
 report.drifted_features  # ['monthly_income', 'province']
+report.performance       # {..., 'ci_low': 0.569, 'ci_high': 0.618, 'confirmed': True}
+report.multivariate      # MultivariateDrift(auc=0.507, separability='indistinguishable', ...)
 ```
 
 Every run is written to SQLite, so drift is a trend you can plot rather than a one-off number:
@@ -222,7 +237,7 @@ pip install -r requirements.txt
 
 python demo/run_demo.py     # generates valorian.db and prints six reports
 streamlit run app.py        # dashboard over the results
-pytest -q                   # 108 tests
+pytest -q                   # 129 tests
 ```
 
 ---
@@ -240,7 +255,7 @@ valorian/
   store.py         SQLite persistence and history queries
 demo/run_demo.py   six months of simulated production with injected drift
 demo/run_qlfs.py   the same monitoring on real Stats SA labour force data
-tests/             108 tests, including "does not fire on clean data" and
+tests/             129 tests, including "does not fire on clean data" and
                    "never reports unmeasured performance as healthy"
 app.py             Streamlit dashboard
 ```
@@ -253,9 +268,11 @@ Stated plainly, because a monitoring tool that oversells itself is a liability:
 
 - **Concept drift detection needs labels, so it runs on a lag.** You learn that August's predictions were wrong only once August's outcomes arrive. For credit or churn that lag can be months. Input drift is the early warning; performance drift is the confirmation.
 - **PSI is sensitive to bin count and to small samples.** Below roughly 1,000 rows per batch the estimate gets noisy. Ten quantile bins is a convention, not a derived optimum.
-- **The per-feature tests look at one feature at a time.** A shift in the *correlation* between two features — each individually stable — is invisible to them. `multivariate_drift` covers that case, but it is a separate call: its result is not yet part of `ModelMonitor.check`, the status, the DriftScore or the stored run.
-- **Multivariate attribution is indicative only.** It uses the forest's built-in importances, which favour features with many categories. Treat "Province carries over half the signal" as a lead to check, not a measurement.
-- **Performance is a point estimate.** The evidence floors stop a verdict on a batch too small to support one, but there is no confidence interval yet, so a drop just past the threshold on a modest batch may still be noise.
+- **The per-feature tests look at one feature at a time.** A shift in the *correlation* between two features — each individually stable — is invisible to them. `ModelMonitor(multivariate=True)` adds the joint-distribution test, but it is off by default because it fits a forest per batch, and it does not feed the DriftScore.
+- **Only clear multivariate separability changes the status.** An AUC of 0.65 or more with every feature individually stable lifts input shift to `watch`. Mild separability (0.55–0.65) is reported and stored but does not, because at production sample sizes a classifier finds that much between almost any two real batches. Those cutoffs are conventions.
+- **Multivariate attribution splits credit unreliably between correlated features.** Shuffling one of two correlated features leaves the classifier the other to fall back on, so both can look less important than they are. Province and geography type are related in the QLFS, so their individual shares are rougher than the ranking.
+- **The performance interval treats the baseline as exact.** `confirmed` says a drop is clear of sampling noise in the *current* batch. The baseline is itself an estimate, and one measured on training data is optimistic. The interval also assumes independent rows.
+- **The interval informs; it does not overrule.** A drop past the threshold is still reported as `degraded` when its interval includes the baseline. The alert says it may be noise, and `confirmed` is `False`.
 - **Data-quality checks compare against the reference frame, not a declared contract.** Renamed columns show up as one missing plus one extra; value ranges and invalid categories are not validated.
 - **The thresholds are conventions, not laws.** 0.10 and 0.25 come from credit risk practice. Any serious deployment should calibrate them against its own history of what did and did not turn out to matter.
 - **The headline demo uses synthetic data.** That is deliberate — it is the only way to have ground truth about drift — but performance on synthetic data is not evidence of performance on real data. The QLFS run above is one real-data check; it is a single dataset in which nothing broke, so it shows the detector stays quiet, not that it catches real failures.
