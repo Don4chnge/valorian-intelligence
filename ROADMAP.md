@@ -1,5 +1,7 @@
 # Roadmap
 
+> Written at the start of the project as a three-week plan, and kept as a record of it. Weeks 1-3 are done (QLFS validation, multivariate drift, CI, deployed dashboard). For what the code does today see the [README](README.md) and [CHANGELOG](CHANGELOG.md).
+
 The scaffold in this repo is roughly the end of week 1. What follows is what turns it from a working prototype into something defensible in an interview.
 
 ## Week 1 — make it yours
