@@ -384,6 +384,16 @@ def main() -> None:
             unsafe_allow_html=True,
         )
 
+        if "label_coverage" in perf.columns and pd.notna(row["label_coverage"]):
+            delay = (
+                f", median delay {row['median_label_delay_days']:.0f} days"
+                if pd.notna(row["median_label_delay_days"]) else ""
+            )
+            st.caption(
+                f"Measured on outcomes that arrived after scoring: "
+                f"{row['label_coverage']:.0%} of this batch's predictions{delay}."
+            )
+
         if row["degraded"] and features["severity"].eq("stable").all():
             st.warning(
                 "**Performance dropped while every input feature looks stable.** "
@@ -391,6 +401,27 @@ def main() -> None:
                 "Suspect concept drift or a data pipeline fault — this is the case "
                 "univariate drift detection cannot see."
             )
+
+    cohorts = chosen_detail.get("cohorts")
+    if cohorts is not None and not cohorts.empty:
+        st.markdown("**Performance by cohort**")
+        st.dataframe(
+            cohorts[["cohort", "n", "current", "ci_low", "ci_high", "baseline", "status"]],
+            use_container_width=True, hide_index=True,
+            column_config={
+                "cohort": st.column_config.TextColumn("Cohort"),
+                "n": st.column_config.NumberColumn("Rows"),
+                "current": st.column_config.NumberColumn("Score", format="%.4f"),
+                "ci_low": st.column_config.NumberColumn("95% low", format="%.4f"),
+                "ci_high": st.column_config.NumberColumn("95% high", format="%.4f"),
+                "baseline": st.column_config.NumberColumn("Own baseline", format="%.4f"),
+                "status": st.column_config.TextColumn("Status"),
+            },
+        )
+        st.caption(
+            "Each cohort is judged against its own baseline, not the overall one. "
+            "With many cohorts, one will look bad by chance."
+        )
 
     st.divider()
 

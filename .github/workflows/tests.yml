@@ -36,3 +36,6 @@ jobs:
         # stops working, the tests should catch it, but an end-to-end run
         # catches wiring problems the unit tests do not see.
         run: python demo/run_demo.py
+
+      - name: Run the delayed-outcomes demo
+        run: python demo/run_delayed_labels.py
