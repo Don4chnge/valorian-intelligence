@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.4.0
+
+Benchmark release. `benchmarks/run_benchmark.py` measures false-positive and
+detection rates across hundreds of seeds and five sample sizes, with Evidently
+run on the same samples. Its first run found two faults in Valorian's drift
+detection, both fixed here. Results and their reading are in `benchmarks/`.
+
+### Changed behaviour
+
+- **PSI must clear a noise floor to count as drift.** On 200-row batches the
+  0.10 threshold fired on 33% of unchanged samples; it is now 6%. The floor is
+  shared across the features in a batch, so twenty unchanged features raise at
+  least one alarm in 11% of 200-row batches instead of all of them. No effect
+  at 1 000 rows and above: every figure in the README's demo and QLFS tables is
+  unchanged. The PSI value itself is not altered, only the severity.
+- **Values outside the reference range can raise severity on their own.**
+  2% of values beyond the reference min/max (or in unseen categories) is
+  moderate, 10% significant. Raw PSI missed 5% of rows moving far into the
+  tail at every sample size from 1 000 up; detection is now 80-100%.
+
+### Added
+
+- `psi_noise_floor` and `out_of_range` on every feature drift result, persisted
+  and named in alerts.
+- `benchmarks/`: the script, `results.csv`, generated `RESULTS.md`, and a
+  README covering what was found, including where Valorian is weaker than a KS
+  test or than Evidently.
+- 19 new tests (129 -> 148).
+
 ## 0.3.0
 
 Evidence release: how sure is each finding, and which claims survive a harder test.

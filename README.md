@@ -35,6 +35,11 @@ Two design decisions follow from actually thinking about how this fails:
 - **Bin edges are frozen from the reference sample.** If you re-bin both distributions together at check time, the drift partially cancels itself out and the monitor under-reports. Edges come from training data only.
 - **Outer bins are opened to ±∞.** Production values outside the training range are the most alarming thing a monitor can see. They must land in the edge bins, not be silently dropped.
 
+Two more came from [benchmarking the detector](benchmarks/README.md) against samples with known answers, which showed the first version got both wrong:
+
+- **PSI has to clear its own noise.** Two samples of the same distribution do not have a PSI of zero; with ten bins and 200 rows a side it averages 0.09, so the 0.10 threshold fired on a third of unchanged batches. A PSI now counts as drift only if it also exceeds what sampling noise produces at that sample size. At 1,000 rows and above this changes nothing.
+- **Out-of-range values are measured directly.** Opening the outer bins keeps extreme values from being dropped, but they land in a bin that already holds a tenth of the data and barely move the PSI: with 5% of rows far beyond the reference maximum, PSI stayed under 0.10 at every sample size from 1,000 up. The share of values outside the reference range (or in unseen categories) is now reported as `out_of_range` and can raise the severity by itself.
+
 ---
 
 ## Does it actually work?
@@ -237,7 +242,7 @@ pip install -r requirements.txt
 
 python demo/run_demo.py     # generates valorian.db and prints six reports
 streamlit run app.py        # dashboard over the results
-pytest -q                   # 129 tests
+pytest -q                   # 148 tests
 ```
 
 ---
@@ -255,7 +260,9 @@ valorian/
   store.py         SQLite persistence and history queries
 demo/run_demo.py   six months of simulated production with injected drift
 demo/run_qlfs.py   the same monitoring on real Stats SA labour force data
-tests/             129 tests, including "does not fire on clean data" and
+benchmarks/        false-positive and detection rates across seeds and sample
+                   sizes, with Evidently run on the same samples
+tests/             148 tests, including "does not fire on clean data" and
                    "never reports unmeasured performance as healthy"
 app.py             Streamlit dashboard
 ```
@@ -267,7 +274,10 @@ app.py             Streamlit dashboard
 Stated plainly, because a monitoring tool that oversells itself is a liability:
 
 - **Concept drift detection needs labels, so it runs on a lag.** You learn that August's predictions were wrong only once August's outcomes arrive. For credit or churn that lag can be months. Input drift is the early warning; performance drift is the confirmation.
-- **PSI is sensitive to bin count and to small samples.** Below roughly 1,000 rows per batch the estimate gets noisy. Ten quantile bins is a convention, not a derived optimum.
+- **PSI is sensitive to bin count and to small samples.** The noise floor stops small batches raising false alarms, but it does so by demanding a larger shift before anything is flagged: at 200 rows a side a mean shift of a quarter of a standard deviation is caught about a third of the time. Ten quantile bins is a convention, not a derived optimum.
+- **Small shifts on large batches are reported as stable.** That is what an effect-size threshold means, and it is a choice. In the benchmark a 0.25 sd mean shift is caught by a KS test every time from 1,000 rows up and by Valorian never at 5,000. The KS and chi-square p-values are reported alongside for anyone who needs that sensitivity.
+- **The out-of-range check weakens as the reference grows.** A larger reference has a wider range of its own. With 5% of rows shifted into the upper tail, detection fell from 99% at 1,000 rows to 80% at 20,000.
+- **A hundred labels is a floor, not a recommendation.** In the benchmark an unchanged model was flagged `degraded` in 18% of batches of 100 labelled rows and 13% of batches of 300; requiring `confirmed` cut that to 2%. From 1,000 labels up the false-alarm rate was 1% or less.
 - **The per-feature tests look at one feature at a time.** A shift in the *correlation* between two features — each individually stable — is invisible to them. `ModelMonitor(multivariate=True)` adds the joint-distribution test, but it is off by default because it fits a forest per batch, and it does not feed the DriftScore.
 - **Only clear multivariate separability changes the status.** An AUC of 0.65 or more with every feature individually stable lifts input shift to `watch`. Mild separability (0.55–0.65) is reported and stored but does not, because at production sample sizes a classifier finds that much between almost any two real batches. Those cutoffs are conventions.
 - **Multivariate attribution splits credit unreliably between correlated features.** Shuffling one of two correlated features leaves the classifier the other to fall back on, so both can look less important than they are. Province and geography type are related in the QLFS, so their individual shares are rougher than the ranking.
