@@ -223,3 +223,55 @@ def test_str_is_readable():
     text = str(multivariate_drift(gaussian(seed=72), gaussian(loc=1.0, seed=73)))
     assert "AUC" in text
     assert "Driven by" in text
+
+
+# --------------------------------------------------------------------------
+# Attribution method
+# --------------------------------------------------------------------------
+
+def test_permutation_attribution_is_the_default():
+    result = multivariate_drift(gaussian(seed=60), gaussian(loc=0.8, seed=61))
+    assert result.attribution == "permutation"
+
+
+def test_impurity_attribution_still_available():
+    result = multivariate_drift(
+        gaussian(seed=62), gaussian(loc=0.8, seed=63), attribution="impurity"
+    )
+    assert result.attribution == "impurity"
+    assert abs(sum(result.contributions.values()) - 1.0) < 0.01
+
+
+def test_unknown_attribution_raises():
+    with pytest.raises(ValueError):
+        multivariate_drift(gaussian(seed=64), gaussian(seed=65), attribution="shap")
+
+
+def test_no_attribution_is_invented_when_nothing_drifted():
+    """Impurity importance splits noise between features; permutation should not."""
+    result = multivariate_drift(gaussian(seed=66), gaussian(seed=67))
+    assert not result.drifted
+    assert sum(result.contributions.values()) == 0.0
+
+
+def test_high_cardinality_noise_feature_does_not_steal_attribution():
+    """
+    The bias this method exists to avoid. `many` has 40 levels and carries no
+    shift; `flag` has 2 levels and carries all of it. Impurity importance
+    gives the noise column a visible share for offering more places to split.
+    """
+    rng = np.random.default_rng(70)
+    levels = [f"L{i}" for i in range(40)]
+    ref = pd.DataFrame({
+        "many": rng.choice(levels, N),
+        "flag": rng.choice(["a", "b"], N, p=[0.5, 0.5]),
+    })
+    cur = pd.DataFrame({
+        "many": rng.choice(levels, N),
+        "flag": rng.choice(["a", "b"], N, p=[0.8, 0.2]),
+    })
+    perm = multivariate_drift(ref, cur, categorical=["many", "flag"])
+    imp = multivariate_drift(ref, cur, categorical=["many", "flag"], attribution="impurity")
+
+    assert perm.contributions["flag"] > 0.95
+    assert perm.contributions["many"] < imp.contributions["many"]

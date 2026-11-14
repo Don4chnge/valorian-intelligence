@@ -349,3 +349,134 @@ def test_database_from_0_1_0_is_upgraded_in_place(reference, tmp_path):
     old = history.set_index("batch_label").loc["old"]
     assert old["status"] == "critical"          # untouched
     assert old["data_quality"] is None or pd.isna(old["data_quality"])
+
+
+# --------------------------------------------------------------------------
+# Confidence intervals: is a flagged drop clear of sampling noise?
+# --------------------------------------------------------------------------
+
+def test_interval_brackets_the_point_estimate():
+    y, p = labelled(2_000)
+    result = compare_performance(score(y, p), y, p)
+    assert result.ci_low < result.current < result.ci_high
+
+
+def test_interval_narrows_with_sample_size():
+    small = compare_performance(0.7, *labelled(300))
+    large = compare_performance(0.7, *labelled(10_000))
+    assert (large.ci_high - large.ci_low) < (small.ci_high - small.ci_low)
+
+
+def test_interval_is_reproducible():
+    y, p = labelled(1_000)
+    a = compare_performance(0.7, y, p)
+    b = compare_performance(0.7, y, p)
+    assert (a.ci_low, a.ci_high) == (b.ci_low, b.ci_high)
+
+
+def test_large_drop_on_large_batch_is_confirmed():
+    y, p = labelled(5_000)
+    result = compare_performance(0.99, y, p)
+    assert result.degraded and result.confirmed is True
+
+
+def test_marginal_drop_on_small_batch_is_flagged_but_not_confirmed():
+    """Point estimate past the threshold, interval still spanning the baseline."""
+    rng = np.random.default_rng(3)
+    y = rng.binomial(1, 0.4, 150)
+    p = np.clip(0.10 * y + rng.uniform(0, 0.90, 150), 0, 1)   # a weak model
+    result = compare_performance(score(y, p) * 1.06, y, p)    # 5.7% below baseline
+    assert result.degraded
+    assert result.confirmed is False
+    assert result.status == "degraded"      # the interval informs, it does not overrule
+
+
+def test_no_drop_means_nothing_to_confirm():
+    y, p = labelled()
+    assert compare_performance(score(y, p), y, p).confirmed is None
+
+
+def test_unevaluable_batch_has_no_interval():
+    result = compare_performance(0.7, np.ones(500), RNG.uniform(0, 1, 500))
+    assert result.ci_low is None and result.confirmed is None
+
+
+def test_interval_can_be_switched_off():
+    y, p = labelled()
+    assert compare_performance(0.7, y, p, n_bootstrap=0).ci_low is None
+
+
+def test_lower_is_better_confirmation_direction():
+    y = RNG.normal(100, 10, 2_000)
+    result = compare_performance(1.0, y, y + RNG.normal(0, 5, 2_000), metric="rmse")
+    assert result.degraded and result.confirmed is True
+
+
+def test_unconfirmed_drop_is_worded_as_possible_noise(reference):
+    monitor = ModelMonitor("m", reference, baseline_score=0.7, db_path=None)
+    perf = {"metric": "roc_auc", "degraded": True, "relative_change": -0.06,
+            "confirmed": False, "ci_low": 0.61, "ci_high": 0.72, "confidence": 0.95}
+    alerts = monitor._build_alerts(detect_drift(reference, reference.copy()), perf)
+    assert any("sampling noise" in a for a in alerts)
+    assert not any("retraining likely needed" in a for a in alerts)
+
+
+# --------------------------------------------------------------------------
+# Multivariate drift inside the monitor
+# --------------------------------------------------------------------------
+
+def correlated(n: int, rho: float, seed: int) -> pd.DataFrame:
+    rng = np.random.default_rng(seed)
+    xy = rng.multivariate_normal([0, 0], [[1, rho], [rho, 1]], n)
+    return pd.DataFrame({"x": xy[:, 0], "y": xy[:, 1]})
+
+
+def test_multivariate_is_off_by_default(reference):
+    report = ModelMonitor("m", reference, db_path=None).check(reference.copy())
+    assert report.multivariate is None
+
+
+def test_joint_shift_with_stable_marginals_reaches_watch():
+    """Correlation flips, every marginal holds: PSI says stable, the monitor should not."""
+    ref, cur = correlated(4_000, 0.9, 1), correlated(4_000, -0.9, 2)
+    plain = ModelMonitor("m", ref, db_path=None).check(cur)
+    assert plain.health["input_shift"] == "stable"
+
+    report = ModelMonitor("m", ref, db_path=None, multivariate=True).check(cur)
+    assert report.drifted_features == []
+    assert report.multivariate.separability in ("clear", "trivial")
+    assert report.health["input_shift"] == "watch"
+    assert report.status == "warning"
+    assert any("Joint distribution shifted" in a for a in report.alerts)
+    assert "Multivariate AUC" in report.summary()
+
+
+def test_multivariate_stays_quiet_on_clean_data():
+    ref, cur = correlated(4_000, 0.5, 3), correlated(4_000, 0.5, 4)
+    report = ModelMonitor("m", ref, db_path=None, multivariate=True).check(cur)
+    assert report.multivariate.separability == "indistinguishable"
+    assert report.status == "ok"
+    assert report.alerts == []
+
+
+def test_multivariate_result_is_persisted(tmp_path):
+    db = tmp_path / "t.db"
+    ref, cur = correlated(2_000, 0.9, 5), correlated(2_000, -0.9, 6)
+    report = ModelMonitor("m", ref, db_path=db, multivariate=True).check(cur)
+
+    stored = MonitoringStore(db).run_detail(report.run_id)["multivariate"]
+    assert stored["auc"] == report.multivariate.auc
+    assert stored["attribution"] == "permutation"
+    assert set(stored["contributions"]) == {"x", "y"}
+    assert MonitoringStore(db).history("m").iloc[0]["input_shift"] == "watch"
+
+
+def test_run_without_multivariate_stores_none(reference, tmp_path):
+    db = tmp_path / "t.db"
+    report = ModelMonitor("m", reference, db_path=db).check(reference.copy())
+    assert MonitoringStore(db).run_detail(report.run_id)["multivariate"] is None
+
+
+def test_multivariate_skipped_when_batch_too_small(reference):
+    monitor = ModelMonitor("m", reference, db_path=None, multivariate=True)
+    assert monitor.check(reference.head(4)).multivariate is None
