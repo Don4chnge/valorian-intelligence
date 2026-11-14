@@ -11,7 +11,22 @@ Categorical       -> PSI over category shares + chi-square test of independence
 PSI convention (standard in credit risk / model monitoring):
     < 0.10   stable
     0.10-0.25 moderate shift, worth investigating
-    > 0.25   significant shift, model likely degraded
+    > 0.25   significant shift, check measured performance
+
+Two things the convention does not cover, both found by benchmarking this
+module against samples with known answers (see benchmarks/):
+
+Small samples. PSI between two samples of the *same* distribution is not zero;
+it is roughly (bins - 1) * (1/n_ref + 1/n_cur). With ten bins and 200 rows a
+side that is 0.09, so the 0.10 threshold fires on about half of all unchanged
+batches. A PSI therefore also has to clear its own noise floor before it
+counts as drift (`psi_noise_floor`).
+
+Values beyond the reference range. Quantile bins with open outer edges keep
+such values rather than dropping them, but they land in a bin that already
+holds 10% of the data, where a few percent of extreme values barely move the
+PSI. The share of out-of-range values is therefore measured directly
+(`out_of_range`) and can raise the severity on its own.
 """
 
 from __future__ import annotations
@@ -27,15 +42,59 @@ PSI_MODERATE = 0.10
 PSI_SIGNIFICANT = 0.25
 _EPS = 1e-6  # guards log(0) when a bin is empty in one sample
 
+# Share of current values outside anything the reference contained: beyond its
+# min/max for a numeric feature, or in a category it never had. Conventions.
+RANGE_MODERATE = 0.02
+RANGE_SIGNIFICANT = 0.10
+_NOISE_QUANTILE = 0.95
+
 Severity = Literal["stable", "moderate", "significant"]
+_ORDER = {"stable": 0, "moderate": 1, "significant": 2}
 
 
-def _severity(psi: float) -> Severity:
-    if psi >= PSI_SIGNIFICANT:
-        return "significant"
-    if psi >= PSI_MODERATE:
-        return "moderate"
-    return "stable"
+def psi_noise_floor(
+    n_reference: int, n_current: int, n_bins: int, n_comparisons: int = 1
+) -> float:
+    """
+    The PSI that two samples of one distribution stay under 95% of the time.
+
+    `n_comparisons` is how many features are being checked together. Twenty
+    features each allowed a 5% false-alarm rate will produce at least one
+    false alarm in most batches, so the 5% is shared across them (Bonferroni):
+    the floor is the level all of them stay under 95% of the time.
+
+    For samples from the same distribution, PSI / (1/n_ref + 1/n_cur) is
+    approximately chi-square with (bins - 1) degrees of freedom — PSI is a
+    symmetrised KL divergence, and to second order that is Pearson's
+    statistic. The approximation is checked empirically in benchmarks/.
+    """
+    dof = max(n_bins - 1, 1)
+    scale = 1.0 / max(n_reference, 1) + 1.0 / max(n_current, 1)
+    quantile = 1.0 - (1.0 - _NOISE_QUANTILE) / max(n_comparisons, 1)
+    return float(stats.chi2.ppf(quantile, dof) * scale)
+
+
+def _severity(psi: float, noise_floor: float = 0.0, out_of_range: float = 0.0) -> Severity:
+    """
+    Severity from PSI and from the out-of-range share, whichever is worse.
+
+    PSI counts only if it also exceeds its noise floor. At a thousand rows a
+    side the floor is about 0.03 and never binds; it matters for small batches.
+    """
+    by_psi: Severity = "stable"
+    if psi > noise_floor:
+        if psi >= PSI_SIGNIFICANT:
+            by_psi = "significant"
+        elif psi >= PSI_MODERATE:
+            by_psi = "moderate"
+
+    by_range: Severity = "stable"
+    if out_of_range >= RANGE_SIGNIFICANT:
+        by_range = "significant"
+    elif out_of_range >= RANGE_MODERATE:
+        by_range = "moderate"
+
+    return max(by_psi, by_range, key=_ORDER.get)
 
 
 @dataclass
@@ -55,6 +114,11 @@ class FeatureDrift:
     # on what remains, so a null spike is invisible to it; these make it visible.
     missing_reference: float = 0.0
     missing_current: float = 0.0
+    # The PSI that sampling noise alone would produce at these sample sizes.
+    psi_noise_floor: float = 0.0
+    # Share of current values the reference never contained. An end of the
+    # range is counted only when it holds more than chance would produce.
+    out_of_range: float = 0.0
 
     @property
     def drifted(self) -> bool:
@@ -80,11 +144,54 @@ def _psi_from_counts(ref_counts: np.ndarray, cur_counts: np.ndarray) -> float:
     return float(np.sum((cur_pct - ref_pct) * np.log(cur_pct / ref_pct)))
 
 
+def _side_p_value(k: int, n_current: int, n_reference: int) -> float:
+    """
+    Chance that k or more current values lie beyond one end of the reference.
+
+    If both samples come from one distribution, every ordering of the pooled
+    values is equally likely. "At least k current values exceed the reference
+    maximum" is the same event as "the k largest pooled values are all
+    current", whose probability is C(n_cur, k) / C(n_ref + n_cur, k). Exact,
+    and free of any assumption about the distribution's shape.
+    """
+    if k <= 0:
+        return 1.0
+    if k > n_current:
+        return 0.0
+    i = np.arange(k)
+    return float(np.exp(np.sum(
+        np.log(n_current - i) - np.log(n_reference + n_current - i)
+    )))
+
+
+def _out_of_range(
+    n_below: int, n_above: int, n_current: int, n_reference: int, n_comparisons: int = 1
+) -> float:
+    """
+    Share of current values beyond the reference min/max, counting only an end
+    where there are more of them than chance explains.
+
+    A fresh sample routinely pokes a little past the range of an earlier one:
+    with equal sizes, three values beyond the old maximum happens one time in
+    eight with nothing wrong. Each end is therefore tested separately (at
+    0.005, so 0.01 across both, shared across the features being compared)
+    and contributes only if it passes.
+    """
+    if n_current == 0:
+        return 0.0
+    counted = sum(
+        k for k in (n_below, n_above)
+        if _side_p_value(k, n_current, n_reference) < 0.005 / max(n_comparisons, 1)
+    )
+    return counted / n_current
+
+
 def numeric_drift(
     feature: str,
     reference: Iterable[float],
     current: Iterable[float],
     bins: int = 10,
+    n_comparisons: int = 1,
 ) -> FeatureDrift:
     """
     PSI over quantile bins + two-sample Kolmogorov-Smirnov test.
@@ -131,6 +238,11 @@ def numeric_drift(
     ref_counts, _ = np.histogram(ref, bins=edges)
     cur_counts, _ = np.histogram(cur, bins=edges)
     psi = _psi_from_counts(ref_counts, cur_counts)
+    floor = psi_noise_floor(ref.size, cur.size, edges.size - 1, n_comparisons)
+    outside = _out_of_range(
+        int((cur < ref.min()).sum()), int((cur > ref.max()).sum()),
+        cur.size, ref.size, n_comparisons,
+    )
 
     ks = stats.ks_2samp(ref, cur)
 
@@ -138,7 +250,7 @@ def numeric_drift(
         feature=feature,
         kind="numeric",
         psi=psi,
-        severity=_severity(psi),
+        severity=_severity(psi, floor, outside),
         test_name="ks_2samp",
         statistic=float(ks.statistic),
         p_value=float(ks.pvalue),
@@ -146,6 +258,8 @@ def numeric_drift(
         n_current=int(cur.size),
         missing_reference=missing_ref,
         missing_current=missing_cur,
+        psi_noise_floor=floor,
+        out_of_range=outside,
     )
 
 
@@ -153,6 +267,7 @@ def categorical_drift(
     feature: str,
     reference: Iterable,
     current: Iterable,
+    n_comparisons: int = 1,
 ) -> FeatureDrift:
     """PSI over category shares + chi-square test on the contingency table."""
     ref_raw = pd.Series(list(reference))
@@ -171,6 +286,10 @@ def categorical_drift(
     cur_counts = cur.value_counts().reindex(categories, fill_value=0).to_numpy()
 
     psi = _psi_from_counts(ref_counts, cur_counts)
+    floor = psi_noise_floor(ref.size, cur.size, len(categories), n_comparisons)
+    # A category the reference never had cannot be explained by resampling the
+    # reference, so the unseen share needs no chance correction.
+    unseen = float(cur_counts[ref_counts == 0].sum() / cur.size)
 
     table = np.vstack([ref_counts, cur_counts])
     keep = table.sum(axis=0) > 0
@@ -183,7 +302,7 @@ def categorical_drift(
         feature=feature,
         kind="categorical",
         psi=psi,
-        severity=_severity(psi),
+        severity=_severity(psi, floor, unseen),
         test_name="chi2_contingency",
         statistic=float(chi2),
         p_value=float(p_value),
@@ -191,6 +310,8 @@ def categorical_drift(
         n_current=int(cur.size),
         missing_reference=missing_ref,
         missing_current=missing_cur,
+        psi_noise_floor=floor,
+        out_of_range=unseen,
     )
 
 
@@ -209,6 +330,10 @@ def detect_drift(
     Only shared columns are compared, and nulls are dropped before the
     statistics are computed. Neither a missing column nor a null spike shows up
     in PSI — `check_quality` reports those, and `ModelMonitor.check` runs both.
+
+    The PSI noise floor is shared across the features compared, so that the
+    chance of *any* unchanged feature being flagged stays near 5% however many
+    there are. It only binds on small batches.
     """
     shared = [c for c in reference.columns if c in current.columns]
     if not shared:
@@ -220,9 +345,15 @@ def detect_drift(
     for col in shared:
         is_cat = col in categorical or not pd.api.types.is_numeric_dtype(reference[col])
         if is_cat:
-            results.append(categorical_drift(col, reference[col], current[col]))
+            results.append(
+                categorical_drift(col, reference[col], current[col], n_comparisons=len(shared))
+            )
         else:
-            results.append(numeric_drift(col, reference[col], current[col], bins=bins))
+            results.append(
+                numeric_drift(
+                    col, reference[col], current[col], bins=bins, n_comparisons=len(shared)
+                )
+            )
 
     frame = pd.DataFrame([r.to_dict() for r in results])
     return frame.sort_values("psi", ascending=False).reset_index(drop=True)

@@ -78,6 +78,8 @@ _ADDED_COLUMNS = {
     "feature_drift": {
         "missing_reference": "REAL",
         "missing_current": "REAL",
+        "psi_noise_floor": "REAL",
+        "out_of_range": "REAL",
     },
     "performance": {
         "n": "INTEGER",
@@ -162,8 +164,9 @@ class MonitoringStore:
             conn.executemany(
                 """INSERT INTO feature_drift
                    (run_id, feature, kind, psi, severity, test_name, statistic,
-                    p_value, missing_reference, missing_current)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    p_value, missing_reference, missing_current,
+                    psi_noise_floor, out_of_range)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 [
                     (
                         run_id,
@@ -176,6 +179,8 @@ class MonitoringStore:
                         _nullable(row["p_value"]),
                         _nullable(row.get("missing_reference")),
                         _nullable(row.get("missing_current")),
+                        _nullable(row.get("psi_noise_floor")),
+                        _nullable(row.get("out_of_range")),
                     )
                     for _, row in drift_frame.iterrows()
                 ],

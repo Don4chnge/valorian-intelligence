@@ -346,9 +346,10 @@ class ModelMonitor:
 
         significant = drift[drift["severity"] == "significant"]
         for _, r in significant.iterrows():
-            alerts.append(
-                f"{r['feature']}: significant input drift (PSI {r['psi']:.3f})"
-            )
+            detail = f"PSI {r['psi']:.3f}"
+            if r.get("out_of_range", 0.0) > 0:
+                detail += f", {r['out_of_range']:.1%} of values outside the reference range"
+            alerts.append(f"{r['feature']}: significant input drift ({detail})")
 
         moderate = drift[drift["severity"] == "moderate"]
         if len(moderate):
