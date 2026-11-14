@@ -231,6 +231,69 @@ monitor.store.history("credit-default-v1")
 monitor.store.feature_history("monthly_income")
 ```
 
+### When the outcomes arrive later
+
+For credit, churn or fraud the outcome is not known when the batch is scored. Log the predictions with an ID, and attach outcomes as they come in:
+
+```python
+# August: score the batch. No outcomes exist yet.
+monitor.check(
+    live_df,
+    batch_label="2026-08",
+    y_pred_proba=predictions,
+    prediction_ids=live_df["application_id"],
+    cohorts=live_df["province"],          # optional
+)                                         # performance: not_observed
+
+# November: some outcomes are in.
+monitor.record_outcomes(ids, outcomes)    # {'recorded': 1140, 'duplicates': 0,
+                                          #  'conflicts': 0, 'unknown': 3, ...}
+result = monitor.evaluate("2026-08")
+print(result.summary())
+```
+
+`demo/run_delayed_labels.py` runs this on the credit model with the concept drift from the main demo planted in the batch, and outcomes arriving the way they do for loans: a default is known when it happens, a good loan only at maturity. At scoring time the batch is `ok` — the inputs look normal and there is nothing else to go on. Seventy-five days in:
+
+```
+Labels: 822 of 3,000 predictions (27%), median delay 75 days
+roc_auc: not judged — labels contain a single class
+Run status: WARNING
+```
+
+Every outcome known so far is a default, because nothing has matured. After maturity:
+
+```
+Labels: 3,000 of 3,000 predictions (100%), median delay 200 days
+roc_auc: 0.6697 -> 0.6206 (-7.3%)  [DEGRADED]
+Run status: CRITICAL
+
+cohort                  n    score  status
+Eastern Cape          293   0.5594  degraded
+Gauteng              1253   0.6431  within_tolerance
+KwaZulu-Natal         551   0.5802  degraded
+Limpopo               304   0.6448  within_tolerance
+Western Cape          599   0.6220  degraded
+```
+
+`evaluate` updates the stored run, so a batch that was `ok` when it was scored turns `critical` six months later. That is the right answer arriving late rather than a wrong one arriving on time.
+
+Early outcomes are not always all one class, and the mixed case is the dangerous one. The first failures to surface tend to be the ones the model ranked most confidently, so a metric on them flatters the model; the test suite builds that case and the partial-label AUC comes out more than 0.05 above the truth. Until 80% of a batch has an outcome (`min_label_coverage`) the metric is therefore shown as "so far" and the verdict is `insufficient_evidence`, never `within_tolerance`.
+
+Re-sending a file is safe: predictions and outcomes already on file are counted as duplicates and left alone. An outcome that contradicts an earlier one is reported as a conflict and the original kept unless `overwrite=True`.
+
+### Cohorts
+
+An overall metric is an average, and an average can hold while one group inside it gets much worse. Pass `cohorts=` and the report carries a per-cohort table with intervals:
+
+```python
+monitor = ModelMonitor(..., cohort_baselines={"Gauteng": 0.71, "Limpopo": 0.64})
+report = monitor.check(live_df, y_true=outcomes, y_pred_proba=predictions,
+                       cohorts=live_df["province"])
+report.cohorts     # cohort, n, current, ci_low, ci_high, baseline, status
+```
+
+A cohort is judged only against **its own** baseline. A model is routinely better on some groups than others, so measuring every cohort against the overall baseline would report the weaker ones as degraded forever. A cohort with no baseline gets its metric and interval and the status `no_baseline`.
+
 ---
 
 ## Quick start
@@ -242,7 +305,7 @@ pip install -r requirements.txt
 
 python demo/run_demo.py     # generates valorian.db and prints six reports
 streamlit run app.py        # dashboard over the results
-pytest -q                   # 148 tests
+pytest -q                   # 172 tests
 ```
 
 ---
@@ -254,15 +317,16 @@ valorian/
   quality.py       schema and null-rate checks — what drift statistics cannot see
   drift.py         PSI, KS, chi-square — feature-level data drift
   multivariate.py  domain-classifier test for shifts in the joint distribution
-  performance.py   baseline comparison, evidence floors, rolling metrics
+  performance.py   baseline comparison, evidence floors, intervals, cohorts
   driftscore.py    0-100 composite score, with an inputs-only mode
   monitor.py       ModelMonitor orchestrator, health dimensions, status rules
   store.py         SQLite persistence and history queries
 demo/run_demo.py   six months of simulated production with injected drift
 demo/run_qlfs.py   the same monitoring on real Stats SA labour force data
+demo/run_delayed_labels.py   outcomes arriving months after the predictions
 benchmarks/        false-positive and detection rates across seeds and sample
                    sizes, with Evidently run on the same samples
-tests/             148 tests, including "does not fire on clean data" and
+tests/             172 tests, including "does not fire on clean data" and
                    "never reports unmeasured performance as healthy"
 app.py             Streamlit dashboard
 ```
@@ -274,6 +338,9 @@ app.py             Streamlit dashboard
 Stated plainly, because a monitoring tool that oversells itself is a liability:
 
 - **Concept drift detection needs labels, so it runs on a lag.** You learn that August's predictions were wrong only once August's outcomes arrive. For credit or churn that lag can be months. Input drift is the early warning; performance drift is the confirmation.
+- **Label coverage guards against biased early outcomes; it does not correct for them.** At 80% coverage the missing fifth can still differ from the rest, and nothing here models *why* an outcome is late. The delayed-label path has been tested on constructed cases only, not on a real portfolio with real maturation.
+- **Reading many cohorts invites false alarms.** With twenty cohorts one will look bad by chance. `confirmed` narrows that; there is no correction across cohorts. Cohort baselines have to be supplied — nothing estimates them.
+- **One cohort label per prediction.** Intersections (province × product) have to be built into the label by the caller.
 - **PSI is sensitive to bin count and to small samples.** The noise floor stops small batches raising false alarms, but it does so by demanding a larger shift before anything is flagged: at 200 rows a side a mean shift of a quarter of a standard deviation is caught about a third of the time. Ten quantile bins is a convention, not a derived optimum.
 - **Small shifts on large batches are reported as stable.** That is what an effect-size threshold means, and it is a choice. In the benchmark a 0.25 sd mean shift is caught by a KS test every time from 1,000 rows up and by Valorian never at 5,000. The KS and chi-square p-values are reported alongside for anyone who needs that sensitivity.
 - **The out-of-range check weakens as the reference grows.** A larger reference has a wider range of its own. With 5% of rows shifted into the upper tail, detection fell from 99% at 1,000 rows to 80% at 20,000.
