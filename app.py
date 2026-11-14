@@ -131,7 +131,12 @@ def driftscore_for(detail: dict) -> float | None:
     if features.empty:
         return None
     perf = detail["performance"]
-    rel = float(perf.iloc[0]["relative_change"]) if not perf.empty else None
+    # NULL means the metric could not be computed for that batch; the score
+    # then falls back to inputs-only rather than assuming performance held.
+    rel = None
+    if not perf.empty and pd.notna(perf.iloc[0]["relative_change"]):
+        if not ("evaluable" in perf.columns and perf.iloc[0]["evaluable"] == 0):
+            rel = float(perf.iloc[0]["relative_change"])
     return compute_driftscore(
         max_psi=float(features["psi"].max()),
         n_drifted=int((features["severity"] != "stable").sum()),
@@ -304,6 +309,16 @@ def main() -> None:
     chosen_detail = store.run_detail(labels[chosen])
     features = chosen_detail["features"].drop(columns=["run_id"])
 
+    issues = chosen_detail["run"].get("quality_issues")
+    if issues and issues != "[]":
+        import json
+
+        st.error(
+            "**Data quality:** "
+            + "; ".join(json.loads(issues))
+            + ". Drift statistics below describe only the values that arrived."
+        )
+
     chart_col, table_col = st.columns([1, 1.3])
     with chart_col:
         st.plotly_chart(feature_bar(features), use_container_width=True,
@@ -323,6 +338,20 @@ def main() -> None:
     perf = chosen_detail["performance"]
     if not perf.empty:
         row = perf.iloc[0]
+        # `evaluable` is NULL for runs written before 0.2.0, which were always
+        # scored, so only an explicit 0 means the batch could not be judged.
+        unevaluable = "evaluable" in perf.columns and row["evaluable"] == 0
+    if not perf.empty and unevaluable:
+        st.markdown(
+            f"<div style='background:{PANEL};border:1px solid {GRID};"
+            f"border-radius:10px;padding:14px 18px'>"
+            f"<b>{row['metric']}</b> &nbsp;·&nbsp; "
+            f"<span style='color:{STATUS['moderate']};font-weight:600'>"
+            f"INSUFFICIENT EVIDENCE</span> &nbsp;— {row['reason']}. "
+            f"Performance is unverified for this batch, not confirmed healthy.</div>",
+            unsafe_allow_html=True,
+        )
+    elif not perf.empty:
         colour = STATUS["significant"] if row["degraded"] else STATUS["stable"]
         verdict = "DEGRADED" if row["degraded"] else "within tolerance"
         st.markdown(
