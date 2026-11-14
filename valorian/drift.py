@@ -51,6 +51,10 @@ class FeatureDrift:
     p_value: float
     n_reference: int
     n_current: int
+    # Share of values that were null before they were dropped. PSI is computed
+    # on what remains, so a null spike is invisible to it; these make it visible.
+    missing_reference: float = 0.0
+    missing_current: float = 0.0
 
     @property
     def drifted(self) -> bool:
@@ -89,8 +93,12 @@ def numeric_drift(
     frozen at training time, otherwise both distributions get re-binned together
     and the drift partly cancels itself out.
     """
-    ref = pd.Series(list(reference), dtype="float64").dropna().to_numpy()
-    cur = pd.Series(list(current), dtype="float64").dropna().to_numpy()
+    ref_raw = pd.Series(list(reference), dtype="float64")
+    cur_raw = pd.Series(list(current), dtype="float64")
+    missing_ref = float(ref_raw.isna().mean()) if len(ref_raw) else 0.0
+    missing_cur = float(cur_raw.isna().mean()) if len(cur_raw) else 0.0
+    ref = ref_raw.dropna().to_numpy()
+    cur = cur_raw.dropna().to_numpy()
 
     if ref.size == 0 or cur.size == 0:
         raise ValueError(f"'{feature}': need non-empty reference and current samples")
@@ -112,6 +120,8 @@ def numeric_drift(
             p_value=float("nan"),
             n_reference=int(ref.size),
             n_current=int(cur.size),
+            missing_reference=missing_ref,
+            missing_current=missing_cur,
         )
 
     # Open the outer edges so production values beyond the training range still
@@ -134,6 +144,8 @@ def numeric_drift(
         p_value=float(ks.pvalue),
         n_reference=int(ref.size),
         n_current=int(cur.size),
+        missing_reference=missing_ref,
+        missing_current=missing_cur,
     )
 
 
@@ -143,8 +155,12 @@ def categorical_drift(
     current: Iterable,
 ) -> FeatureDrift:
     """PSI over category shares + chi-square test on the contingency table."""
-    ref = pd.Series(list(reference)).dropna()
-    cur = pd.Series(list(current)).dropna()
+    ref_raw = pd.Series(list(reference))
+    cur_raw = pd.Series(list(current))
+    missing_ref = float(ref_raw.isna().mean()) if len(ref_raw) else 0.0
+    missing_cur = float(cur_raw.isna().mean()) if len(cur_raw) else 0.0
+    ref = ref_raw.dropna()
+    cur = cur_raw.dropna()
 
     if ref.empty or cur.empty:
         raise ValueError(f"'{feature}': need non-empty reference and current samples")
@@ -173,6 +189,8 @@ def categorical_drift(
         p_value=float(p_value),
         n_reference=int(ref.size),
         n_current=int(cur.size),
+        missing_reference=missing_ref,
+        missing_current=missing_cur,
     )
 
 
@@ -187,6 +205,10 @@ def detect_drift(
 
     Returns one row per feature, sorted by PSI descending so the worst
     offenders are at the top.
+
+    Only shared columns are compared, and nulls are dropped before the
+    statistics are computed. Neither a missing column nor a null spike shows up
+    in PSI — `check_quality` reports those, and `ModelMonitor.check` runs both.
     """
     shared = [c for c in reference.columns if c in current.columns]
     if not shared:

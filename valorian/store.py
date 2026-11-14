@@ -54,12 +54,47 @@ CREATE INDEX IF NOT EXISTS idx_feature_drift_run ON feature_drift (run_id);
 CREATE INDEX IF NOT EXISTS idx_runs_model ON runs (model_name, created_at);
 """
 
+# Columns added after 0.1.0. CREATE TABLE IF NOT EXISTS leaves an existing
+# table untouched, so a database written by an older version would be missing
+# these; they are added in place on open. Additive only — old rows keep NULL,
+# and nothing is ever dropped or rewritten.
+_ADDED_COLUMNS = {
+    "runs": {
+        "data_quality": "TEXT",
+        "input_shift": "TEXT",
+        "performance_status": "TEXT",
+        "quality_issues": "TEXT",
+    },
+    "feature_drift": {
+        "missing_reference": "REAL",
+        "missing_current": "REAL",
+    },
+    "performance": {
+        "n": "INTEGER",
+        "evaluable": "INTEGER",
+        "reason": "TEXT",
+    },
+}
+
+
+def _nullable(value) -> float | None:
+    """NaN has no meaning in a SQL REAL column; store it as NULL."""
+    if value is None:
+        return None
+    value = float(value)
+    return None if value != value else value
+
 
 class MonitoringStore:
     def __init__(self, path: str | Path = "valorian.db"):
         self.path = str(path)
         with self._connect() as conn:
             conn.executescript(_SCHEMA)
+            for table, columns in _ADDED_COLUMNS.items():
+                present = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+                for name, sql_type in columns.items():
+                    if name not in present:
+                        conn.execute(f"ALTER TABLE {table} ADD COLUMN {name} {sql_type}")
 
     @contextmanager
     def _connect(self):
@@ -79,6 +114,8 @@ class MonitoringStore:
         performance: dict | None = None,
         status: str = "ok",
         notes: str | None = None,
+        health: dict | None = None,
+        quality_issues: list[str] | None = None,
     ) -> int:
         """Persist one monitoring run and return its run_id."""
         n_drifted = int(drift_frame["drifted"].sum()) if len(drift_frame) else 0
@@ -88,8 +125,9 @@ class MonitoringStore:
             cur = conn.execute(
                 """INSERT INTO runs
                    (model_name, batch_label, created_at, n_features,
-                    n_drifted, max_psi, status, notes)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                    n_drifted, max_psi, status, notes,
+                    data_quality, input_shift, performance_status, quality_issues)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     model_name,
                     batch_label,
@@ -99,14 +137,19 @@ class MonitoringStore:
                     max_psi,
                     status,
                     notes,
+                    (health or {}).get("data_quality"),
+                    (health or {}).get("input_shift"),
+                    (health or {}).get("performance"),
+                    json.dumps(quality_issues) if quality_issues is not None else None,
                 ),
             )
             run_id = int(cur.lastrowid)
 
             conn.executemany(
                 """INSERT INTO feature_drift
-                   (run_id, feature, kind, psi, severity, test_name, statistic, p_value)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)""",
+                   (run_id, feature, kind, psi, severity, test_name, statistic,
+                    p_value, missing_reference, missing_current)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 [
                     (
                         run_id,
@@ -116,7 +159,9 @@ class MonitoringStore:
                         row["severity"],
                         row["test_name"],
                         float(row["statistic"]),
-                        float(row["p_value"]),
+                        _nullable(row["p_value"]),
+                        _nullable(row.get("missing_reference")),
+                        _nullable(row.get("missing_current")),
                     )
                     for _, row in drift_frame.iterrows()
                 ],
@@ -125,15 +170,19 @@ class MonitoringStore:
             if performance:
                 conn.execute(
                     """INSERT INTO performance
-                       (run_id, metric, baseline, current, relative_change, degraded)
-                       VALUES (?, ?, ?, ?, ?, ?)""",
+                       (run_id, metric, baseline, current, relative_change,
+                        degraded, n, evaluable, reason)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         run_id,
                         performance["metric"],
                         performance["baseline"],
-                        performance["current"],
-                        performance["relative_change"],
+                        _nullable(performance["current"]),
+                        _nullable(performance["relative_change"]),
                         int(performance["degraded"]),
+                        performance.get("n"),
+                        int(performance.get("evaluable", True)),
+                        performance.get("reason"),
                     ),
                 )
 

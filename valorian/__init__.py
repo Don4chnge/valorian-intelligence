@@ -21,10 +21,11 @@ from .drift import (
 from .driftscore import DriftScore, band_for, compute_driftscore, score_report
 from .monitor import ModelMonitor, MonitoringReport
 from .multivariate import MultivariateDrift, multivariate_drift, separability_for
+from .quality import DataQualityReport, check_quality
 from .performance import PerformanceDrift, compare_performance, rolling_performance, score
 from .store import MonitoringStore
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 __all__ = [
     "ModelMonitor",
@@ -37,6 +38,8 @@ __all__ = [
     "MultivariateDrift",
     "multivariate_drift",
     "separability_for",
+    "DataQualityReport",
+    "check_quality",
     "FeatureDrift",
     "PerformanceDrift",
     "detect_drift",

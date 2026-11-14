@@ -13,10 +13,18 @@ from pathlib import Path
 
 import pandas as pd
 
-from .drift import detect_drift
+from .drift import FeatureDrift, detect_drift
 from .driftscore import DriftScore, score_report
-from .performance import compare_performance
+from .performance import MIN_PER_CLASS, MIN_SAMPLES, compare_performance
+from .quality import (
+    NULL_RATE_FAILED,
+    NULL_RATE_WARNING,
+    DataQualityReport,
+    check_quality,
+)
 from .store import MonitoringStore
+
+_DRIFT_COLUMNS = list(FeatureDrift.__dataclass_fields__) + ["drifted"]
 
 
 @dataclass
@@ -27,6 +35,7 @@ class MonitoringReport:
     performance: dict | None = None
     alerts: list[str] = field(default_factory=list)
     run_id: int | None = None
+    quality: DataQualityReport | None = None
 
     @property
     def driftscore(self) -> DriftScore:
@@ -34,8 +43,76 @@ class MonitoringReport:
         return score_report(self.drift, self.performance)
 
     @property
+    def health(self) -> dict[str, str]:
+        """
+        Three separate findings, because they are three separate questions.
+
+            data_quality   healthy | warning | failed
+                           did the batch arrive in the shape the model expects?
+            input_shift    stable | watch | significant
+                           do the inputs still look like the reference data?
+            performance    within_tolerance | degraded |
+                           insufficient_evidence | not_observed
+                           is the model still right, as measured on outcomes?
+
+        Only the last one is evidence about the model. `not_observed` means no
+        labels were supplied; `insufficient_evidence` means labels were
+        supplied but there were too few to support a verdict. Neither is a
+        clean bill of health.
+        """
+        if (self.drift["severity"] == "significant").any():
+            shift = "significant"
+        elif (self.drift["severity"] == "moderate").any():
+            shift = "watch"
+        else:
+            shift = "stable"
+
+        if not self.performance:
+            perf = "not_observed"
+        elif not self.performance.get("evaluable", True):
+            perf = "insufficient_evidence"
+        elif self.performance["degraded"]:
+            perf = "degraded"
+        else:
+            perf = "within_tolerance"
+
+        return {
+            "data_quality": self.quality.status if self.quality else "healthy",
+            "input_shift": shift,
+            "performance": perf,
+        }
+
+    @property
     def status(self) -> str:
-        """`critical` if the model is probably broken, `warning` if watch it, else `ok`."""
+        """
+        One-word roll-up of `health`.
+
+            critical   measured performance has degraded, or the batch failed
+                       its data-quality checks and cannot be trusted
+            warning    something needs a human look: inputs shifted, a quality
+                       warning, or labels too thin to judge performance
+            ok         none of the above
+
+        Input drift alone never reaches `critical`, however large. Drift is a
+        reason to investigate, not evidence the model is wrong — the demo's
+        2026-07 batch has a PSI of 0.90 and a model performing at baseline.
+        Before 0.2.0 that batch was `critical`; `legacy_status` keeps the old
+        rule for anyone who depends on it.
+        """
+        h = self.health
+        if h["performance"] == "degraded" or h["data_quality"] == "failed":
+            return "critical"
+        if (
+            h["input_shift"] != "stable"
+            or h["data_quality"] == "warning"
+            or h["performance"] == "insufficient_evidence"
+        ):
+            return "warning"
+        return "ok"
+
+    @property
+    def legacy_status(self) -> str:
+        """The pre-0.2.0 rule, where significant input drift alone was `critical`."""
         if self.performance and self.performance["degraded"]:
             return "critical"
         if (self.drift["severity"] == "significant").any():
@@ -54,7 +131,10 @@ class MonitoringReport:
             f"Model:  {self.model_name}",
             f"Batch:  {self.batch_label or 'unlabelled'}",
             f"Status: {self.status.upper()}",
-            f"Score:  {ds.score:.0f}/100 ({ds.band})",
+            f"Score:  {ds.score:.0f}/100 ({ds.band})"
+            + ("  [inputs only]" if ds.mode == "inputs_only" else ""),
+            "Health: "
+            + " | ".join(f"{k.replace('_', ' ')}: {v.replace('_', ' ')}" for k, v in self.health.items()),
             "",
             f"{len(self.drift)} features checked, {len(self.drifted_features)} drifted",
         ]
@@ -71,12 +151,15 @@ class MonitoringReport:
 
         if self.performance:
             p = self.performance
-            lines += [
-                "",
-                f"{p['metric']}: {p['baseline']:.4f} -> {p['current']:.4f} "
-                f"({p['relative_change']:+.1%})"
-                + ("  [DEGRADED]" if p["degraded"] else ""),
-            ]
+            if p.get("evaluable", True):
+                lines += [
+                    "",
+                    f"{p['metric']}: {p['baseline']:.4f} -> {p['current']:.4f} "
+                    f"({p['relative_change']:+.1%})"
+                    + ("  [DEGRADED]" if p["degraded"] else ""),
+                ]
+            else:
+                lines += ["", f"{p['metric']}: not evaluated — {p.get('reason')}"]
 
         if self.alerts:
             lines.append("")
@@ -105,6 +188,10 @@ class ModelMonitor:
         performance_threshold: float = 0.05,
         bins: int = 10,
         db_path: str | Path | None = "valorian.db",
+        min_samples: int = MIN_SAMPLES,
+        min_per_class: int = MIN_PER_CLASS,
+        null_rate_warning: float = NULL_RATE_WARNING,
+        null_rate_failed: float = NULL_RATE_FAILED,
     ):
         if reference.empty:
             raise ValueError("reference dataframe is empty")
@@ -116,6 +203,10 @@ class ModelMonitor:
         self.metric = metric
         self.performance_threshold = performance_threshold
         self.bins = bins
+        self.min_samples = min_samples
+        self.min_per_class = min_per_class
+        self.null_rate_warning = null_rate_warning
+        self.null_rate_failed = null_rate_failed
         self.store = MonitoringStore(db_path) if db_path else None
 
     def check(
@@ -127,12 +218,30 @@ class ModelMonitor:
         persist: bool = True,
     ) -> MonitoringReport:
         """Run one monitoring pass over a batch of production data."""
-        drift = detect_drift(
+        if not any(c in current.columns for c in self.reference.columns):
+            raise ValueError("reference and current share no columns")
+
+        quality = check_quality(
             self.reference,
             current,
             categorical=self.categorical,
-            bins=self.bins,
+            null_rate_warning=self.null_rate_warning,
+            null_rate_failed=self.null_rate_failed,
         )
+
+        # A column that arrived entirely null or as the wrong type cannot be
+        # drift-tested. It is already recorded as a quality failure, so leave
+        # it out here rather than let it crash the run or report a fake PSI.
+        usable = current.drop(columns=quality.unusable_columns)
+        if any(c in usable.columns for c in self.reference.columns):
+            drift = detect_drift(
+                self.reference,
+                usable,
+                categorical=self.categorical,
+                bins=self.bins,
+            )
+        else:
+            drift = pd.DataFrame(columns=_DRIFT_COLUMNS)
 
         performance = None
         if y_true is not None and y_pred_proba is not None:
@@ -146,6 +255,8 @@ class ModelMonitor:
                 y_pred_proba=y_pred_proba,
                 metric=self.metric,
                 threshold=self.performance_threshold,
+                min_samples=self.min_samples,
+                min_per_class=self.min_per_class,
             ).to_dict()
 
         report = MonitoringReport(
@@ -153,7 +264,8 @@ class ModelMonitor:
             batch_label=batch_label,
             drift=drift,
             performance=performance,
-            alerts=self._build_alerts(drift, performance),
+            alerts=self._build_alerts(drift, performance, quality),
+            quality=quality,
         )
 
         if persist and self.store:
@@ -163,12 +275,28 @@ class ModelMonitor:
                 batch_label=batch_label,
                 performance=performance,
                 status=report.status,
+                health=report.health,
+                quality_issues=quality.issues,
             )
 
         return report
 
-    def _build_alerts(self, drift: pd.DataFrame, performance: dict | None) -> list[str]:
+    def _build_alerts(
+        self,
+        drift: pd.DataFrame,
+        performance: dict | None,
+        quality: DataQualityReport | None = None,
+    ) -> list[str]:
         alerts = []
+
+        if quality:
+            alerts += [f"Data quality: {issue}" for issue in quality.issues]
+
+        if performance and not performance.get("evaluable", True):
+            alerts.append(
+                f"{performance['metric']} not evaluated — {performance['reason']}. "
+                "Performance is unverified for this batch, not confirmed healthy"
+            )
 
         significant = drift[drift["severity"] == "significant"]
         for _, r in significant.iterrows():
