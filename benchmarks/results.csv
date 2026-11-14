@@ -1,0 +1,372 @@
+family,scenario,expected,n,detector,flagged,trials,rate,ci_low,ci_high
+numeric,no change,quiet,200,raw PSI >= 0.10 (valorian <= 0.3),100,300,0.3333,0.2824,0.3885
+numeric,no change,quiet,200,valorian drifted,18,300,0.06,0.0383,0.0928
+numeric,no change,quiet,200,valorian significant,2,300,0.0067,0.0018,0.024
+numeric,no change,quiet,200,KS p < 0.05,14,300,0.0467,0.028,0.0768
+numeric,no change,quiet,200,evidently PSI >= 0.10,49,100,0.49,0.3942,0.5865
+numeric,no change,quiet,200,evidently default,6,100,0.06,0.0278,0.1248
+numeric,no change,quiet,500,raw PSI >= 0.10 (valorian <= 0.3),0,300,0.0,0.0,0.0126
+numeric,no change,quiet,500,valorian drifted,4,300,0.0133,0.0052,0.0338
+numeric,no change,quiet,500,valorian significant,0,300,0.0,0.0,0.0126
+numeric,no change,quiet,500,KS p < 0.05,13,300,0.0433,0.0255,0.0727
+numeric,no change,quiet,500,evidently PSI >= 0.10,0,100,0.0,0.0,0.037
+numeric,no change,quiet,500,evidently default,5,100,0.05,0.0215,0.1118
+numeric,no change,quiet,1000,raw PSI >= 0.10 (valorian <= 0.3),0,300,0.0,0.0,0.0126
+numeric,no change,quiet,1000,valorian drifted,0,300,0.0,0.0,0.0126
+numeric,no change,quiet,1000,valorian significant,0,300,0.0,0.0,0.0126
+numeric,no change,quiet,1000,KS p < 0.05,11,300,0.0367,0.0206,0.0645
+numeric,no change,quiet,1000,evidently PSI >= 0.10,0,100,0.0,0.0,0.037
+numeric,no change,quiet,1000,evidently default,5,100,0.05,0.0215,0.1118
+numeric,no change,quiet,5000,raw PSI >= 0.10 (valorian <= 0.3),0,300,0.0,0.0,0.0126
+numeric,no change,quiet,5000,valorian drifted,0,300,0.0,0.0,0.0126
+numeric,no change,quiet,5000,valorian significant,0,300,0.0,0.0,0.0126
+numeric,no change,quiet,5000,KS p < 0.05,17,300,0.0567,0.0357,0.0889
+numeric,no change,quiet,5000,evidently PSI >= 0.10,0,100,0.0,0.0,0.037
+numeric,no change,quiet,5000,evidently default,0,100,0.0,0.0,0.037
+numeric,no change,quiet,20000,raw PSI >= 0.10 (valorian <= 0.3),0,300,0.0,0.0,0.0126
+numeric,no change,quiet,20000,valorian drifted,0,300,0.0,0.0,0.0126
+numeric,no change,quiet,20000,valorian significant,0,300,0.0,0.0,0.0126
+numeric,no change,quiet,20000,KS p < 0.05,14,300,0.0467,0.028,0.0768
+numeric,no change,quiet,20000,evidently PSI >= 0.10,0,100,0.0,0.0,0.037
+numeric,no change,quiet,20000,evidently default,0,100,0.0,0.0,0.037
+numeric,mean +0.10 sd,fire,200,raw PSI >= 0.10 (valorian <= 0.3),131,300,0.4367,0.3817,0.4932
+numeric,mean +0.10 sd,fire,200,valorian drifted,33,300,0.11,0.0794,0.1505
+numeric,mean +0.10 sd,fire,200,valorian significant,3,300,0.01,0.0034,0.029
+numeric,mean +0.10 sd,fire,200,KS p < 0.05,34,300,0.1133,0.0822,0.1542
+numeric,mean +0.10 sd,fire,200,evidently PSI >= 0.10,52,100,0.52,0.4232,0.6154
+numeric,mean +0.10 sd,fire,200,evidently default,13,100,0.13,0.0776,0.2098
+numeric,mean +0.10 sd,fire,500,raw PSI >= 0.10 (valorian <= 0.3),3,300,0.01,0.0034,0.029
+numeric,mean +0.10 sd,fire,500,valorian drifted,7,300,0.0233,0.0113,0.0474
+numeric,mean +0.10 sd,fire,500,valorian significant,0,300,0.0,0.0,0.0126
+numeric,mean +0.10 sd,fire,500,KS p < 0.05,81,300,0.27,0.2229,0.3229
+numeric,mean +0.10 sd,fire,500,evidently PSI >= 0.10,5,100,0.05,0.0215,0.1118
+numeric,mean +0.10 sd,fire,500,evidently default,28,100,0.28,0.2014,0.3749
+numeric,mean +0.10 sd,fire,1000,raw PSI >= 0.10 (valorian <= 0.3),0,300,0.0,0.0,0.0126
+numeric,mean +0.10 sd,fire,1000,valorian drifted,0,300,0.0,0.0,0.0126
+numeric,mean +0.10 sd,fire,1000,valorian significant,0,300,0.0,0.0,0.0126
+numeric,mean +0.10 sd,fire,1000,KS p < 0.05,150,300,0.5,0.4438,0.5562
+numeric,mean +0.10 sd,fire,1000,evidently PSI >= 0.10,0,100,0.0,0.0,0.037
+numeric,mean +0.10 sd,fire,1000,evidently default,49,100,0.49,0.3942,0.5865
+numeric,mean +0.10 sd,fire,5000,raw PSI >= 0.10 (valorian <= 0.3),0,300,0.0,0.0,0.0126
+numeric,mean +0.10 sd,fire,5000,valorian drifted,0,300,0.0,0.0,0.0126
+numeric,mean +0.10 sd,fire,5000,valorian significant,0,300,0.0,0.0,0.0126
+numeric,mean +0.10 sd,fire,5000,KS p < 0.05,296,300,0.9867,0.9662,0.9948
+numeric,mean +0.10 sd,fire,5000,evidently PSI >= 0.10,0,100,0.0,0.0,0.037
+numeric,mean +0.10 sd,fire,5000,evidently default,45,100,0.45,0.3561,0.5476
+numeric,mean +0.10 sd,fire,20000,raw PSI >= 0.10 (valorian <= 0.3),0,300,0.0,0.0,0.0126
+numeric,mean +0.10 sd,fire,20000,valorian drifted,0,300,0.0,0.0,0.0126
+numeric,mean +0.10 sd,fire,20000,valorian significant,0,300,0.0,0.0,0.0126
+numeric,mean +0.10 sd,fire,20000,KS p < 0.05,300,300,1.0,0.9874,1.0
+numeric,mean +0.10 sd,fire,20000,evidently PSI >= 0.10,0,100,0.0,0.0,0.037
+numeric,mean +0.10 sd,fire,20000,evidently default,60,100,0.6,0.502,0.6906
+numeric,mean +0.25 sd,fire,200,raw PSI >= 0.10 (valorian <= 0.3),228,300,0.76,0.7086,0.8048
+numeric,mean +0.25 sd,fire,200,valorian drifted,111,300,0.37,0.3173,0.426
+numeric,mean +0.25 sd,fire,200,valorian significant,27,300,0.09,0.0626,0.1278
+numeric,mean +0.25 sd,fire,200,KS p < 0.05,157,300,0.5233,0.4669,0.5792
+numeric,mean +0.25 sd,fire,200,evidently PSI >= 0.10,78,100,0.78,0.6893,0.85
+numeric,mean +0.25 sd,fire,200,evidently default,52,100,0.52,0.4232,0.6154
+numeric,mean +0.25 sd,fire,500,raw PSI >= 0.10 (valorian <= 0.3),122,300,0.4067,0.3526,0.4631
+numeric,mean +0.25 sd,fire,500,valorian drifted,126,300,0.42,0.3655,0.4765
+numeric,mean +0.25 sd,fire,500,valorian significant,0,300,0.0,0.0,0.0126
+numeric,mean +0.25 sd,fire,500,KS p < 0.05,275,300,0.9167,0.8799,0.9429
+numeric,mean +0.25 sd,fire,500,evidently PSI >= 0.10,53,100,0.53,0.4329,0.6249
+numeric,mean +0.25 sd,fire,500,evidently default,91,100,0.91,0.8377,0.9519
+numeric,mean +0.25 sd,fire,1000,raw PSI >= 0.10 (valorian <= 0.3),50,300,0.1667,0.1288,0.213
+numeric,mean +0.25 sd,fire,1000,valorian drifted,50,300,0.1667,0.1288,0.213
+numeric,mean +0.25 sd,fire,1000,valorian significant,0,300,0.0,0.0,0.0126
+numeric,mean +0.25 sd,fire,1000,KS p < 0.05,300,300,1.0,0.9874,1.0
+numeric,mean +0.25 sd,fire,1000,evidently PSI >= 0.10,31,100,0.31,0.2278,0.4063
+numeric,mean +0.25 sd,fire,1000,evidently default,100,100,1.0,0.963,1.0
+numeric,mean +0.25 sd,fire,5000,raw PSI >= 0.10 (valorian <= 0.3),0,300,0.0,0.0,0.0126
+numeric,mean +0.25 sd,fire,5000,valorian drifted,0,300,0.0,0.0,0.0126
+numeric,mean +0.25 sd,fire,5000,valorian significant,0,300,0.0,0.0,0.0126
+numeric,mean +0.25 sd,fire,5000,KS p < 0.05,300,300,1.0,0.9874,1.0
+numeric,mean +0.25 sd,fire,5000,evidently PSI >= 0.10,0,100,0.0,0.0,0.037
+numeric,mean +0.25 sd,fire,5000,evidently default,100,100,1.0,0.963,1.0
+numeric,mean +0.25 sd,fire,20000,raw PSI >= 0.10 (valorian <= 0.3),0,300,0.0,0.0,0.0126
+numeric,mean +0.25 sd,fire,20000,valorian drifted,0,300,0.0,0.0,0.0126
+numeric,mean +0.25 sd,fire,20000,valorian significant,0,300,0.0,0.0,0.0126
+numeric,mean +0.25 sd,fire,20000,KS p < 0.05,300,300,1.0,0.9874,1.0
+numeric,mean +0.25 sd,fire,20000,evidently PSI >= 0.10,0,100,0.0,0.0,0.037
+numeric,mean +0.25 sd,fire,20000,evidently default,100,100,1.0,0.963,1.0
+numeric,mean +0.50 sd,fire,200,raw PSI >= 0.10 (valorian <= 0.3),300,300,1.0,0.9874,1.0
+numeric,mean +0.50 sd,fire,200,valorian drifted,289,300,0.9633,0.9355,0.9794
+numeric,mean +0.50 sd,fire,200,valorian significant,230,300,0.7667,0.7156,0.811
+numeric,mean +0.50 sd,fire,200,KS p < 0.05,300,300,1.0,0.9874,1.0
+numeric,mean +0.50 sd,fire,200,evidently PSI >= 0.10,99,100,0.99,0.9455,0.9982
+numeric,mean +0.50 sd,fire,200,evidently default,100,100,1.0,0.963,1.0
+numeric,mean +0.50 sd,fire,500,raw PSI >= 0.10 (valorian <= 0.3),300,300,1.0,0.9874,1.0
+numeric,mean +0.50 sd,fire,500,valorian drifted,300,300,1.0,0.9874,1.0
+numeric,mean +0.50 sd,fire,500,valorian significant,193,300,0.6433,0.5876,0.6954
+numeric,mean +0.50 sd,fire,500,KS p < 0.05,300,300,1.0,0.9874,1.0
+numeric,mean +0.50 sd,fire,500,evidently PSI >= 0.10,100,100,1.0,0.963,1.0
+numeric,mean +0.50 sd,fire,500,evidently default,100,100,1.0,0.963,1.0
+numeric,mean +0.50 sd,fire,1000,raw PSI >= 0.10 (valorian <= 0.3),300,300,1.0,0.9874,1.0
+numeric,mean +0.50 sd,fire,1000,valorian drifted,300,300,1.0,0.9874,1.0
+numeric,mean +0.50 sd,fire,1000,valorian significant,167,300,0.5567,0.5001,0.6118
+numeric,mean +0.50 sd,fire,1000,KS p < 0.05,300,300,1.0,0.9874,1.0
+numeric,mean +0.50 sd,fire,1000,evidently PSI >= 0.10,100,100,1.0,0.963,1.0
+numeric,mean +0.50 sd,fire,1000,evidently default,100,100,1.0,0.963,1.0
+numeric,mean +0.50 sd,fire,5000,raw PSI >= 0.10 (valorian <= 0.3),300,300,1.0,0.9874,1.0
+numeric,mean +0.50 sd,fire,5000,valorian drifted,300,300,1.0,0.9874,1.0
+numeric,mean +0.50 sd,fire,5000,valorian significant,102,300,0.34,0.2887,0.3953
+numeric,mean +0.50 sd,fire,5000,KS p < 0.05,300,300,1.0,0.9874,1.0
+numeric,mean +0.50 sd,fire,5000,evidently PSI >= 0.10,100,100,1.0,0.963,1.0
+numeric,mean +0.50 sd,fire,5000,evidently default,100,100,1.0,0.963,1.0
+numeric,mean +0.50 sd,fire,20000,raw PSI >= 0.10 (valorian <= 0.3),300,300,1.0,0.9874,1.0
+numeric,mean +0.50 sd,fire,20000,valorian drifted,300,300,1.0,0.9874,1.0
+numeric,mean +0.50 sd,fire,20000,valorian significant,42,300,0.14,0.1053,0.1838
+numeric,mean +0.50 sd,fire,20000,KS p < 0.05,300,300,1.0,0.9874,1.0
+numeric,mean +0.50 sd,fire,20000,evidently PSI >= 0.10,100,100,1.0,0.963,1.0
+numeric,mean +0.50 sd,fire,20000,evidently default,100,100,1.0,0.963,1.0
+numeric,variance x1.5,fire,200,raw PSI >= 0.10 (valorian <= 0.3),300,300,1.0,0.9874,1.0
+numeric,variance x1.5,fire,200,valorian drifted,287,300,0.9567,0.9273,0.9745
+numeric,variance x1.5,fire,200,valorian significant,200,300,0.6667,0.6115,0.7176
+numeric,variance x1.5,fire,200,KS p < 0.05,189,300,0.63,0.574,0.6827
+numeric,variance x1.5,fire,200,evidently PSI >= 0.10,100,100,1.0,0.963,1.0
+numeric,variance x1.5,fire,200,evidently default,62,100,0.62,0.5221,0.709
+numeric,variance x1.5,fire,500,raw PSI >= 0.10 (valorian <= 0.3),299,300,0.9967,0.9814,0.9994
+numeric,variance x1.5,fire,500,valorian drifted,300,300,1.0,0.9874,1.0
+numeric,variance x1.5,fire,500,valorian significant,103,300,0.3433,0.2919,0.3987
+numeric,variance x1.5,fire,500,KS p < 0.05,299,300,0.9967,0.9814,0.9994
+numeric,variance x1.5,fire,500,evidently PSI >= 0.10,100,100,1.0,0.963,1.0
+numeric,variance x1.5,fire,500,evidently default,100,100,1.0,0.963,1.0
+numeric,variance x1.5,fire,1000,raw PSI >= 0.10 (valorian <= 0.3),300,300,1.0,0.9874,1.0
+numeric,variance x1.5,fire,1000,valorian drifted,300,300,1.0,0.9874,1.0
+numeric,variance x1.5,fire,1000,valorian significant,53,300,0.1767,0.1377,0.2238
+numeric,variance x1.5,fire,1000,KS p < 0.05,300,300,1.0,0.9874,1.0
+numeric,variance x1.5,fire,1000,evidently PSI >= 0.10,100,100,1.0,0.963,1.0
+numeric,variance x1.5,fire,1000,evidently default,100,100,1.0,0.963,1.0
+numeric,variance x1.5,fire,5000,raw PSI >= 0.10 (valorian <= 0.3),300,300,1.0,0.9874,1.0
+numeric,variance x1.5,fire,5000,valorian drifted,300,300,1.0,0.9874,1.0
+numeric,variance x1.5,fire,5000,valorian significant,0,300,0.0,0.0,0.0126
+numeric,variance x1.5,fire,5000,KS p < 0.05,300,300,1.0,0.9874,1.0
+numeric,variance x1.5,fire,5000,evidently PSI >= 0.10,100,100,1.0,0.963,1.0
+numeric,variance x1.5,fire,5000,evidently default,100,100,1.0,0.963,1.0
+numeric,variance x1.5,fire,20000,raw PSI >= 0.10 (valorian <= 0.3),300,300,1.0,0.9874,1.0
+numeric,variance x1.5,fire,20000,valorian drifted,300,300,1.0,0.9874,1.0
+numeric,variance x1.5,fire,20000,valorian significant,0,300,0.0,0.0,0.0126
+numeric,variance x1.5,fire,20000,KS p < 0.05,300,300,1.0,0.9874,1.0
+numeric,variance x1.5,fire,20000,evidently PSI >= 0.10,100,100,1.0,0.963,1.0
+numeric,variance x1.5,fire,20000,evidently default,100,100,1.0,0.963,1.0
+numeric,5% of rows into upper tail,fire,200,raw PSI >= 0.10 (valorian <= 0.3),171,300,0.57,0.5134,0.6248
+numeric,5% of rows into upper tail,fire,200,valorian drifted,270,300,0.9,0.8608,0.9291
+numeric,5% of rows into upper tail,fire,200,valorian significant,5,300,0.0167,0.0071,0.0384
+numeric,5% of rows into upper tail,fire,200,KS p < 0.05,25,300,0.0833,0.0571,0.1201
+numeric,5% of rows into upper tail,fire,200,evidently PSI >= 0.10,100,100,1.0,0.963,1.0
+numeric,5% of rows into upper tail,fire,200,evidently default,10,100,0.1,0.0552,0.1744
+numeric,5% of rows into upper tail,fire,500,raw PSI >= 0.10 (valorian <= 0.3),7,300,0.0233,0.0113,0.0474
+numeric,5% of rows into upper tail,fire,500,valorian drifted,299,300,0.9967,0.9814,0.9994
+numeric,5% of rows into upper tail,fire,500,valorian significant,0,300,0.0,0.0,0.0126
+numeric,5% of rows into upper tail,fire,500,KS p < 0.05,59,300,0.1967,0.1556,0.2454
+numeric,5% of rows into upper tail,fire,500,evidently PSI >= 0.10,100,100,1.0,0.963,1.0
+numeric,5% of rows into upper tail,fire,500,evidently default,19,100,0.19,0.1251,0.2778
+numeric,5% of rows into upper tail,fire,1000,raw PSI >= 0.10 (valorian <= 0.3),0,300,0.0,0.0,0.0126
+numeric,5% of rows into upper tail,fire,1000,valorian drifted,298,300,0.9933,0.976,0.9982
+numeric,5% of rows into upper tail,fire,1000,valorian significant,0,300,0.0,0.0,0.0126
+numeric,5% of rows into upper tail,fire,1000,KS p < 0.05,144,300,0.48,0.4241,0.5364
+numeric,5% of rows into upper tail,fire,1000,evidently PSI >= 0.10,100,100,1.0,0.963,1.0
+numeric,5% of rows into upper tail,fire,1000,evidently default,52,100,0.52,0.4232,0.6154
+numeric,5% of rows into upper tail,fire,5000,raw PSI >= 0.10 (valorian <= 0.3),0,300,0.0,0.0,0.0126
+numeric,5% of rows into upper tail,fire,5000,valorian drifted,283,300,0.9433,0.9111,0.9643
+numeric,5% of rows into upper tail,fire,5000,valorian significant,0,300,0.0,0.0,0.0126
+numeric,5% of rows into upper tail,fire,5000,KS p < 0.05,300,300,1.0,0.9874,1.0
+numeric,5% of rows into upper tail,fire,5000,evidently PSI >= 0.10,100,100,1.0,0.963,1.0
+numeric,5% of rows into upper tail,fire,5000,evidently default,100,100,1.0,0.963,1.0
+numeric,5% of rows into upper tail,fire,20000,raw PSI >= 0.10 (valorian <= 0.3),0,300,0.0,0.0,0.0126
+numeric,5% of rows into upper tail,fire,20000,valorian drifted,240,300,0.8,0.7511,0.8413
+numeric,5% of rows into upper tail,fire,20000,valorian significant,0,300,0.0,0.0,0.0126
+numeric,5% of rows into upper tail,fire,20000,KS p < 0.05,300,300,1.0,0.9874,1.0
+numeric,5% of rows into upper tail,fire,20000,evidently PSI >= 0.10,100,100,1.0,0.963,1.0
+numeric,5% of rows into upper tail,fire,20000,evidently default,100,100,1.0,0.963,1.0
+categorical,no change,quiet,200,raw PSI >= 0.10 (valorian <= 0.3),16,300,0.0533,0.0331,0.0849
+categorical,no change,quiet,200,valorian drifted,16,300,0.0533,0.0331,0.0849
+categorical,no change,quiet,200,valorian significant,0,300,0.0,0.0,0.0126
+categorical,no change,quiet,200,chi-square p < 0.05,19,300,0.0633,0.0409,0.0968
+categorical,no change,quiet,200,evidently PSI >= 0.10,6,100,0.06,0.0278,0.1248
+categorical,no change,quiet,200,evidently default,32,100,0.32,0.2367,0.4166
+categorical,no change,quiet,500,raw PSI >= 0.10 (valorian <= 0.3),0,300,0.0,0.0,0.0126
+categorical,no change,quiet,500,valorian drifted,0,300,0.0,0.0,0.0126
+categorical,no change,quiet,500,valorian significant,0,300,0.0,0.0,0.0126
+categorical,no change,quiet,500,chi-square p < 0.05,13,300,0.0433,0.0255,0.0727
+categorical,no change,quiet,500,evidently PSI >= 0.10,0,100,0.0,0.0,0.037
+categorical,no change,quiet,500,evidently default,33,100,0.33,0.2456,0.4269
+categorical,no change,quiet,1000,raw PSI >= 0.10 (valorian <= 0.3),0,300,0.0,0.0,0.0126
+categorical,no change,quiet,1000,valorian drifted,0,300,0.0,0.0,0.0126
+categorical,no change,quiet,1000,valorian significant,0,300,0.0,0.0,0.0126
+categorical,no change,quiet,1000,chi-square p < 0.05,18,300,0.06,0.0383,0.0928
+categorical,no change,quiet,1000,evidently PSI >= 0.10,0,100,0.0,0.0,0.037
+categorical,no change,quiet,1000,evidently default,34,100,0.34,0.2546,0.4372
+categorical,no change,quiet,5000,raw PSI >= 0.10 (valorian <= 0.3),0,300,0.0,0.0,0.0126
+categorical,no change,quiet,5000,valorian drifted,0,300,0.0,0.0,0.0126
+categorical,no change,quiet,5000,valorian significant,0,300,0.0,0.0,0.0126
+categorical,no change,quiet,5000,chi-square p < 0.05,11,300,0.0367,0.0206,0.0645
+categorical,no change,quiet,5000,evidently PSI >= 0.10,0,100,0.0,0.0,0.037
+categorical,no change,quiet,5000,evidently default,0,100,0.0,0.0,0.037
+categorical,no change,quiet,20000,raw PSI >= 0.10 (valorian <= 0.3),0,300,0.0,0.0,0.0126
+categorical,no change,quiet,20000,valorian drifted,0,300,0.0,0.0,0.0126
+categorical,no change,quiet,20000,valorian significant,0,300,0.0,0.0,0.0126
+categorical,no change,quiet,20000,chi-square p < 0.05,19,300,0.0633,0.0409,0.0968
+categorical,no change,quiet,20000,evidently PSI >= 0.10,0,100,0.0,0.0,0.037
+categorical,no change,quiet,20000,evidently default,0,100,0.0,0.0,0.037
+categorical,small mix shift,fire,200,raw PSI >= 0.10 (valorian <= 0.3),24,300,0.08,0.0543,0.1163
+categorical,small mix shift,fire,200,valorian drifted,24,300,0.08,0.0543,0.1163
+categorical,small mix shift,fire,200,valorian significant,0,300,0.0,0.0,0.0126
+categorical,small mix shift,fire,200,chi-square p < 0.05,27,300,0.09,0.0626,0.1278
+categorical,small mix shift,fire,200,evidently PSI >= 0.10,7,100,0.07,0.0343,0.1375
+categorical,small mix shift,fire,200,evidently default,37,100,0.37,0.2818,0.4678
+categorical,small mix shift,fire,500,raw PSI >= 0.10 (valorian <= 0.3),1,300,0.0033,0.0006,0.0186
+categorical,small mix shift,fire,500,valorian drifted,1,300,0.0033,0.0006,0.0186
+categorical,small mix shift,fire,500,valorian significant,0,300,0.0,0.0,0.0126
+categorical,small mix shift,fire,500,chi-square p < 0.05,44,300,0.1467,0.1111,0.1912
+categorical,small mix shift,fire,500,evidently PSI >= 0.10,0,100,0.0,0.0,0.037
+categorical,small mix shift,fire,500,evidently default,43,100,0.43,0.3373,0.5278
+categorical,small mix shift,fire,1000,raw PSI >= 0.10 (valorian <= 0.3),0,300,0.0,0.0,0.0126
+categorical,small mix shift,fire,1000,valorian drifted,0,300,0.0,0.0,0.0126
+categorical,small mix shift,fire,1000,valorian significant,0,300,0.0,0.0,0.0126
+categorical,small mix shift,fire,1000,chi-square p < 0.05,85,300,0.2833,0.2353,0.3368
+categorical,small mix shift,fire,1000,evidently PSI >= 0.10,0,100,0.0,0.0,0.037
+categorical,small mix shift,fire,1000,evidently default,71,100,0.71,0.6146,0.7899
+categorical,small mix shift,fire,5000,raw PSI >= 0.10 (valorian <= 0.3),0,300,0.0,0.0,0.0126
+categorical,small mix shift,fire,5000,valorian drifted,0,300,0.0,0.0,0.0126
+categorical,small mix shift,fire,5000,valorian significant,0,300,0.0,0.0,0.0126
+categorical,small mix shift,fire,5000,chi-square p < 0.05,277,300,0.9233,0.8876,0.9484
+categorical,small mix shift,fire,5000,evidently PSI >= 0.10,0,100,0.0,0.0,0.037
+categorical,small mix shift,fire,5000,evidently default,0,100,0.0,0.0,0.037
+categorical,small mix shift,fire,20000,raw PSI >= 0.10 (valorian <= 0.3),0,300,0.0,0.0,0.0126
+categorical,small mix shift,fire,20000,valorian drifted,0,300,0.0,0.0,0.0126
+categorical,small mix shift,fire,20000,valorian significant,0,300,0.0,0.0,0.0126
+categorical,small mix shift,fire,20000,chi-square p < 0.05,300,300,1.0,0.9874,1.0
+categorical,small mix shift,fire,20000,evidently PSI >= 0.10,0,100,0.0,0.0,0.037
+categorical,small mix shift,fire,20000,evidently default,0,100,0.0,0.0,0.037
+categorical,large mix shift,fire,200,raw PSI >= 0.10 (valorian <= 0.3),233,300,0.7767,0.7262,0.8201
+categorical,large mix shift,fire,200,valorian drifted,233,300,0.7767,0.7262,0.8201
+categorical,large mix shift,fire,200,valorian significant,50,300,0.1667,0.1288,0.213
+categorical,large mix shift,fire,200,chi-square p < 0.05,243,300,0.81,0.7618,0.8504
+categorical,large mix shift,fire,200,evidently PSI >= 0.10,78,100,0.78,0.6893,0.85
+categorical,large mix shift,fire,200,evidently default,98,100,0.98,0.93,0.9945
+categorical,large mix shift,fire,500,raw PSI >= 0.10 (valorian <= 0.3),236,300,0.7867,0.7368,0.8292
+categorical,large mix shift,fire,500,valorian drifted,236,300,0.7867,0.7368,0.8292
+categorical,large mix shift,fire,500,valorian significant,7,300,0.0233,0.0113,0.0474
+categorical,large mix shift,fire,500,chi-square p < 0.05,300,300,1.0,0.9874,1.0
+categorical,large mix shift,fire,500,evidently PSI >= 0.10,72,100,0.72,0.6251,0.7986
+categorical,large mix shift,fire,500,evidently default,100,100,1.0,0.963,1.0
+categorical,large mix shift,fire,1000,raw PSI >= 0.10 (valorian <= 0.3),253,300,0.8433,0.7979,0.8801
+categorical,large mix shift,fire,1000,valorian drifted,253,300,0.8433,0.7979,0.8801
+categorical,large mix shift,fire,1000,valorian significant,0,300,0.0,0.0,0.0126
+categorical,large mix shift,fire,1000,chi-square p < 0.05,300,300,1.0,0.9874,1.0
+categorical,large mix shift,fire,1000,evidently PSI >= 0.10,84,100,0.84,0.7558,0.899
+categorical,large mix shift,fire,1000,evidently default,100,100,1.0,0.963,1.0
+categorical,large mix shift,fire,5000,raw PSI >= 0.10 (valorian <= 0.3),289,300,0.9633,0.9355,0.9794
+categorical,large mix shift,fire,5000,valorian drifted,289,300,0.9633,0.9355,0.9794
+categorical,large mix shift,fire,5000,valorian significant,0,300,0.0,0.0,0.0126
+categorical,large mix shift,fire,5000,chi-square p < 0.05,300,300,1.0,0.9874,1.0
+categorical,large mix shift,fire,5000,evidently PSI >= 0.10,98,100,0.98,0.93,0.9945
+categorical,large mix shift,fire,5000,evidently default,100,100,1.0,0.963,1.0
+categorical,large mix shift,fire,20000,raw PSI >= 0.10 (valorian <= 0.3),300,300,1.0,0.9874,1.0
+categorical,large mix shift,fire,20000,valorian drifted,300,300,1.0,0.9874,1.0
+categorical,large mix shift,fire,20000,valorian significant,0,300,0.0,0.0,0.0126
+categorical,large mix shift,fire,20000,chi-square p < 0.05,300,300,1.0,0.9874,1.0
+categorical,large mix shift,fire,20000,evidently PSI >= 0.10,100,100,1.0,0.963,1.0
+categorical,large mix shift,fire,20000,evidently default,100,100,1.0,0.963,1.0
+categorical,2% unseen category,fire,200,raw PSI >= 0.10 (valorian <= 0.3),300,300,1.0,0.9874,1.0
+categorical,2% unseen category,fire,200,valorian drifted,300,300,1.0,0.9874,1.0
+categorical,2% unseen category,fire,200,valorian significant,78,300,0.26,0.2136,0.3124
+categorical,2% unseen category,fire,200,chi-square p < 0.05,41,300,0.1367,0.1024,0.1802
+categorical,2% unseen category,fire,200,evidently PSI >= 0.10,100,100,1.0,0.963,1.0
+categorical,2% unseen category,fire,200,evidently default,100,100,1.0,0.963,1.0
+categorical,2% unseen category,fire,500,raw PSI >= 0.10 (valorian <= 0.3),300,300,1.0,0.9874,1.0
+categorical,2% unseen category,fire,500,valorian drifted,300,300,1.0,0.9874,1.0
+categorical,2% unseen category,fire,500,valorian significant,6,300,0.02,0.0092,0.0429
+categorical,2% unseen category,fire,500,chi-square p < 0.05,278,300,0.9267,0.8915,0.9511
+categorical,2% unseen category,fire,500,evidently PSI >= 0.10,100,100,1.0,0.963,1.0
+categorical,2% unseen category,fire,500,evidently default,100,100,1.0,0.963,1.0
+categorical,2% unseen category,fire,1000,raw PSI >= 0.10 (valorian <= 0.3),300,300,1.0,0.9874,1.0
+categorical,2% unseen category,fire,1000,valorian drifted,300,300,1.0,0.9874,1.0
+categorical,2% unseen category,fire,1000,valorian significant,0,300,0.0,0.0,0.0126
+categorical,2% unseen category,fire,1000,chi-square p < 0.05,300,300,1.0,0.9874,1.0
+categorical,2% unseen category,fire,1000,evidently PSI >= 0.10,100,100,1.0,0.963,1.0
+categorical,2% unseen category,fire,1000,evidently default,100,100,1.0,0.963,1.0
+categorical,2% unseen category,fire,5000,raw PSI >= 0.10 (valorian <= 0.3),300,300,1.0,0.9874,1.0
+categorical,2% unseen category,fire,5000,valorian drifted,300,300,1.0,0.9874,1.0
+categorical,2% unseen category,fire,5000,valorian significant,0,300,0.0,0.0,0.0126
+categorical,2% unseen category,fire,5000,chi-square p < 0.05,300,300,1.0,0.9874,1.0
+categorical,2% unseen category,fire,5000,evidently PSI >= 0.10,100,100,1.0,0.963,1.0
+categorical,2% unseen category,fire,5000,evidently default,0,100,0.0,0.0,0.037
+categorical,2% unseen category,fire,20000,raw PSI >= 0.10 (valorian <= 0.3),300,300,1.0,0.9874,1.0
+categorical,2% unseen category,fire,20000,valorian drifted,300,300,1.0,0.9874,1.0
+categorical,2% unseen category,fire,20000,valorian significant,0,300,0.0,0.0,0.0126
+categorical,2% unseen category,fire,20000,chi-square p < 0.05,300,300,1.0,0.9874,1.0
+categorical,2% unseen category,fire,20000,evidently PSI >= 0.10,100,100,1.0,0.963,1.0
+categorical,2% unseen category,fire,20000,evidently default,0,100,0.0,0.0,0.037
+many features,"no change, 20 features",quiet,200,any raw PSI >= 0.10 (valorian <= 0.3),300,300,1.0,0.9874,1.0
+many features,"no change, 20 features",quiet,200,any feature drifted (valorian),34,300,0.1133,0.0822,0.1542
+many features,"no change, 20 features",quiet,200,any KS p < 0.05,166,300,0.5533,0.4968,0.6086
+many features,"no change, 20 features",quiet,200,any KS p < 0.05 / 20 (Bonferroni),18,300,0.06,0.0383,0.0928
+many features,"no change, 20 features",quiet,500,any raw PSI >= 0.10 (valorian <= 0.3),17,300,0.0567,0.0357,0.0889
+many features,"no change, 20 features",quiet,500,any feature drifted (valorian),15,300,0.05,0.0305,0.0808
+many features,"no change, 20 features",quiet,500,any KS p < 0.05,192,300,0.64,0.5842,0.6922
+many features,"no change, 20 features",quiet,500,any KS p < 0.05 / 20 (Bonferroni),14,300,0.0467,0.028,0.0768
+many features,"no change, 20 features",quiet,1000,any raw PSI >= 0.10 (valorian <= 0.3),0,300,0.0,0.0,0.0126
+many features,"no change, 20 features",quiet,1000,any feature drifted (valorian),0,300,0.0,0.0,0.0126
+many features,"no change, 20 features",quiet,1000,any KS p < 0.05,199,300,0.6633,0.6081,0.7144
+many features,"no change, 20 features",quiet,1000,any KS p < 0.05 / 20 (Bonferroni),17,300,0.0567,0.0357,0.0889
+many features,"no change, 20 features",quiet,5000,any raw PSI >= 0.10 (valorian <= 0.3),0,300,0.0,0.0,0.0126
+many features,"no change, 20 features",quiet,5000,any feature drifted (valorian),0,300,0.0,0.0,0.0126
+many features,"no change, 20 features",quiet,5000,any KS p < 0.05,180,300,0.6,0.5436,0.6538
+many features,"no change, 20 features",quiet,5000,any KS p < 0.05 / 20 (Bonferroni),16,300,0.0533,0.0331,0.0849
+many features,"no change, 20 features",quiet,20000,any raw PSI >= 0.10 (valorian <= 0.3),0,300,0.0,0.0,0.0126
+many features,"no change, 20 features",quiet,20000,any feature drifted (valorian),0,300,0.0,0.0,0.0126
+many features,"no change, 20 features",quiet,20000,any KS p < 0.05,181,300,0.6033,0.547,0.6571
+many features,"no change, 20 features",quiet,20000,any KS p < 0.05 / 20 (Bonferroni),22,300,0.0733,0.0489,0.1085
+multivariate,no change,quiet,500,any feature drifted (valorian),0,40,0.0,0.0,0.0876
+multivariate,no change,quiet,500,multivariate AUC >= 0.55 (mild),1,40,0.025,0.0044,0.1288
+multivariate,no change,quiet,500,multivariate AUC >= 0.65 (clear),0,40,0.0,0.0,0.0876
+multivariate,no change,quiet,2000,any feature drifted (valorian),0,40,0.0,0.0,0.0876
+multivariate,no change,quiet,2000,multivariate AUC >= 0.55 (mild),0,40,0.0,0.0,0.0876
+multivariate,no change,quiet,2000,multivariate AUC >= 0.65 (clear),0,40,0.0,0.0,0.0876
+multivariate,no change,quiet,5000,any feature drifted (valorian),0,40,0.0,0.0,0.0876
+multivariate,no change,quiet,5000,multivariate AUC >= 0.55 (mild),0,40,0.0,0.0,0.0876
+multivariate,no change,quiet,5000,multivariate AUC >= 0.65 (clear),0,40,0.0,0.0,0.0876
+multivariate,correlation 0.6 -> 0.0,fire,500,any feature drifted (valorian),0,40,0.0,0.0,0.0876
+multivariate,correlation 0.6 -> 0.0,fire,500,multivariate AUC >= 0.55 (mild),40,40,1.0,0.9124,1.0
+multivariate,correlation 0.6 -> 0.0,fire,500,multivariate AUC >= 0.65 (clear),2,40,0.05,0.0138,0.165
+multivariate,correlation 0.6 -> 0.0,fire,2000,any feature drifted (valorian),0,40,0.0,0.0,0.0876
+multivariate,correlation 0.6 -> 0.0,fire,2000,multivariate AUC >= 0.55 (mild),40,40,1.0,0.9124,1.0
+multivariate,correlation 0.6 -> 0.0,fire,2000,multivariate AUC >= 0.65 (clear),12,40,0.3,0.1807,0.4543
+multivariate,correlation 0.6 -> 0.0,fire,5000,any feature drifted (valorian),0,40,0.0,0.0,0.0876
+multivariate,correlation 0.6 -> 0.0,fire,5000,multivariate AUC >= 0.55 (mild),40,40,1.0,0.9124,1.0
+multivariate,correlation 0.6 -> 0.0,fire,5000,multivariate AUC >= 0.65 (clear),30,40,0.75,0.5981,0.8581
+multivariate,correlation 0.6 -> -0.6,fire,500,any feature drifted (valorian),0,40,0.0,0.0,0.0876
+multivariate,correlation 0.6 -> -0.6,fire,500,multivariate AUC >= 0.55 (mild),40,40,1.0,0.9124,1.0
+multivariate,correlation 0.6 -> -0.6,fire,500,multivariate AUC >= 0.65 (clear),40,40,1.0,0.9124,1.0
+multivariate,correlation 0.6 -> -0.6,fire,2000,any feature drifted (valorian),0,40,0.0,0.0,0.0876
+multivariate,correlation 0.6 -> -0.6,fire,2000,multivariate AUC >= 0.55 (mild),40,40,1.0,0.9124,1.0
+multivariate,correlation 0.6 -> -0.6,fire,2000,multivariate AUC >= 0.65 (clear),40,40,1.0,0.9124,1.0
+multivariate,correlation 0.6 -> -0.6,fire,5000,any feature drifted (valorian),0,40,0.0,0.0,0.0876
+multivariate,correlation 0.6 -> -0.6,fire,5000,multivariate AUC >= 0.55 (mild),40,40,1.0,0.9124,1.0
+multivariate,correlation 0.6 -> -0.6,fire,5000,multivariate AUC >= 0.65 (clear),40,40,1.0,0.9124,1.0
+performance,no change,quiet,100,degraded (point estimate past 5%),55,300,0.1833,0.1436,0.231
+performance,no change,quiet,100,degraded and confirmed by interval,5,300,0.0167,0.0071,0.0384
+performance,no change,quiet,100,insufficient evidence,0,300,0.0,0.0,0.0126
+performance,no change,quiet,300,degraded (point estimate past 5%),38,300,0.1267,0.0937,0.1691
+performance,no change,quiet,300,degraded and confirmed by interval,7,300,0.0233,0.0113,0.0474
+performance,no change,quiet,300,insufficient evidence,0,300,0.0,0.0,0.0126
+performance,no change,quiet,1000,degraded (point estimate past 5%),3,300,0.01,0.0034,0.029
+performance,no change,quiet,1000,degraded and confirmed by interval,2,300,0.0067,0.0018,0.024
+performance,no change,quiet,1000,insufficient evidence,0,300,0.0,0.0,0.0126
+performance,no change,quiet,5000,degraded (point estimate past 5%),0,300,0.0,0.0,0.0126
+performance,no change,quiet,5000,degraded and confirmed by interval,0,300,0.0,0.0,0.0126
+performance,no change,quiet,5000,insufficient evidence,0,300,0.0,0.0,0.0126
+performance,AUC -12%,fire,100,degraded (point estimate past 5%),246,300,0.82,0.7726,0.8593
+performance,AUC -12%,fire,100,degraded and confirmed by interval,91,300,0.3033,0.2541,0.3576
+performance,AUC -12%,fire,100,insufficient evidence,0,300,0.0,0.0,0.0126
+performance,AUC -12%,fire,300,degraded (point estimate past 5%),291,300,0.97,0.944,0.9841
+performance,AUC -12%,fire,300,degraded and confirmed by interval,246,300,0.82,0.7726,0.8593
+performance,AUC -12%,fire,300,insufficient evidence,0,300,0.0,0.0,0.0126
+performance,AUC -12%,fire,1000,degraded (point estimate past 5%),299,300,0.9967,0.9814,0.9994
+performance,AUC -12%,fire,1000,degraded and confirmed by interval,299,300,0.9967,0.9814,0.9994
+performance,AUC -12%,fire,1000,insufficient evidence,0,300,0.0,0.0,0.0126
+performance,AUC -12%,fire,5000,degraded (point estimate past 5%),300,300,1.0,0.9874,1.0
+performance,AUC -12%,fire,5000,degraded and confirmed by interval,300,300,1.0,0.9874,1.0
+performance,AUC -12%,fire,5000,insufficient evidence,0,300,0.0,0.0,0.0126
