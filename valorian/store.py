@@ -50,6 +50,16 @@ CREATE TABLE IF NOT EXISTS performance (
     FOREIGN KEY (run_id) REFERENCES runs (run_id)
 );
 
+CREATE TABLE IF NOT EXISTS multivariate (
+    run_id        INTEGER NOT NULL,
+    auc           REAL,
+    separability  TEXT,
+    p_value       REAL,
+    attribution   TEXT,
+    contributions TEXT,
+    FOREIGN KEY (run_id) REFERENCES runs (run_id)
+);
+
 CREATE INDEX IF NOT EXISTS idx_feature_drift_run ON feature_drift (run_id);
 CREATE INDEX IF NOT EXISTS idx_runs_model ON runs (model_name, created_at);
 """
@@ -73,6 +83,9 @@ _ADDED_COLUMNS = {
         "n": "INTEGER",
         "evaluable": "INTEGER",
         "reason": "TEXT",
+        "ci_low": "REAL",
+        "ci_high": "REAL",
+        "confidence": "REAL",
     },
 }
 
@@ -116,6 +129,7 @@ class MonitoringStore:
         notes: str | None = None,
         health: dict | None = None,
         quality_issues: list[str] | None = None,
+        multivariate: dict | None = None,
     ) -> int:
         """Persist one monitoring run and return its run_id."""
         n_drifted = int(drift_frame["drifted"].sum()) if len(drift_frame) else 0
@@ -171,8 +185,8 @@ class MonitoringStore:
                 conn.execute(
                     """INSERT INTO performance
                        (run_id, metric, baseline, current, relative_change,
-                        degraded, n, evaluable, reason)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                        degraded, n, evaluable, reason, ci_low, ci_high, confidence)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                     (
                         run_id,
                         performance["metric"],
@@ -183,6 +197,24 @@ class MonitoringStore:
                         performance.get("n"),
                         int(performance.get("evaluable", True)),
                         performance.get("reason"),
+                        _nullable(performance.get("ci_low")),
+                        _nullable(performance.get("ci_high")),
+                        _nullable(performance.get("confidence")),
+                    ),
+                )
+
+            if multivariate:
+                conn.execute(
+                    """INSERT INTO multivariate
+                       (run_id, auc, separability, p_value, attribution, contributions)
+                       VALUES (?, ?, ?, ?, ?, ?)""",
+                    (
+                        run_id,
+                        multivariate["auc"],
+                        multivariate["separability"],
+                        _nullable(multivariate.get("p_value")),
+                        multivariate.get("attribution"),
+                        json.dumps(multivariate.get("contributions", {})),
                     ),
                 )
 
@@ -231,8 +263,22 @@ class MonitoringStore:
             perf = pd.read_sql_query(
                 "SELECT * FROM performance WHERE run_id = ?", conn, params=(run_id,)
             )
+            mv = conn.execute(
+                "SELECT * FROM multivariate WHERE run_id = ?", (run_id,)
+            ).fetchone()
 
-        return {"run": dict(run), "features": features, "performance": perf}
+        multivariate = None
+        if mv is not None:
+            multivariate = dict(mv)
+            multivariate.pop("run_id")
+            multivariate["contributions"] = json.loads(multivariate["contributions"] or "{}")
+
+        return {
+            "run": dict(run),
+            "features": features,
+            "performance": perf,
+            "multivariate": multivariate,
+        }
 
     def to_json(self, run_id: int) -> str:
         detail = self.run_detail(run_id)
@@ -241,6 +287,7 @@ class MonitoringStore:
                 "run": detail["run"],
                 "features": detail["features"].to_dict(orient="records"),
                 "performance": detail["performance"].to_dict(orient="records"),
+                "multivariate": detail["multivariate"],
             },
             indent=2,
         )

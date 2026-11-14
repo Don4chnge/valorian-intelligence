@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.3.0
+
+Evidence release: how sure is each finding, and which claims survive a harder test.
+
+### Changed behaviour
+
+- **Multivariate attribution now defaults to permutation importance on held-out
+  rows.** The forest's built-in importances (still available as
+  `attribution="impurity"`) are computed on training rows and favour features
+  with many distinct values. Contributions will differ from 0.2.0, and are all
+  zero when the batches are not separable, instead of an arbitrary split.
+- `demo/permutation_check.py` runs 500 permutations instead of 20.
+
+### Added
+
+- **Bootstrap confidence intervals on performance** (`ci_low`, `ci_high`,
+  `confirmed`). `degraded` is unchanged; `confirmed` says whether a flagged
+  drop is clear of sampling noise, and the alert wording follows it.
+- **`ModelMonitor(multivariate=True)`** runs the joint-distribution test inside
+  `check`, stores it, and shows it in the summary and dashboard. Clear
+  separability with every feature individually stable lifts input shift to
+  `watch`. Off by default.
+- Intervals and multivariate results are persisted; older databases are
+  upgraded in place.
+- 21 new tests (108 -> 129).
+
+### Findings re-tested on the QLFS data
+
+- Province as the driver of the multivariate shift: **held**, and stronger
+  (74-100% of held-out separability, against "over half" before).
+- Multivariate shift in 2023 Q1 is not noise: **held** at 500 permutations
+  (p = 0.002, against p = 0.048 from 20).
+- New caveats documented in the README: QLFS rows are clustered by household
+  and the quarters overlap through the rotating panel, so both the p-value and
+  "stable across four quarters" are weaker than they read.
+
 ## 0.2.0
 
 Correctness release. The statistics are unchanged — every number in the README's

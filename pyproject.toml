@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "valorian-intelligence"
-version = "0.2.0"
+version = "0.3.0"
 description = "Drift detection and performance monitoring for production ML models"
 readme = "README.md"
 requires-python = ">=3.10"

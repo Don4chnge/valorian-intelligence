@@ -51,7 +51,7 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import StratifiedKFold, cross_val_predict
+from sklearn.model_selection import StratifiedKFold, cross_val_predict, train_test_split
 from sklearn.metrics import roc_auc_score
 
 AUC_INDISTINGUISHABLE = 0.55
@@ -59,6 +59,7 @@ AUC_MILD = 0.65
 AUC_CLEAR = 0.80
 
 Separability = Literal["indistinguishable", "mild", "clear", "trivial"]
+Attribution = Literal["permutation", "impurity"]
 
 
 def separability_for(auc: float) -> Separability:
@@ -80,6 +81,7 @@ class MultivariateDrift:
     n_current: int
     n_features: int
     contributions: dict[str, float] = field(default_factory=dict)
+    attribution: Attribution = "permutation"
 
     @property
     def drifted(self) -> bool:
@@ -98,9 +100,11 @@ class MultivariateDrift:
         head = f"Multivariate AUC {self.auc:.3f} — {self.separability}"
         if self.p_value is not None:
             head += f" (p = {self.p_value:.3f})"
-        if not self.contributions:
+        # Permutation attribution reports all zeros when there was nothing to
+        # attribute; printing "driven by: x 0.00" would only invite misreading.
+        if not any(self.contributions.values()):
             return head
-        top = ", ".join(f"{k} {v:.2f}" for k, v in self.top_contributors(3))
+        top = ", ".join(f"{k} {v:.2f}" for k, v in self.top_contributors(3) if v > 0)
         return f"{head}\nDriven by: {top}"
 
 
@@ -158,6 +162,7 @@ def multivariate_drift(
     folds: int = 3,
     n_permutations: int = 0,
     random_state: int = 0,
+    attribution: Attribution = "permutation",
 ) -> MultivariateDrift:
     """
     Detect drift in the joint distribution by trying to tell the batches apart.
@@ -171,7 +176,16 @@ def multivariate_drift(
     real AUC. That is the honest answer to "is 0.58 actually meaningful at this
     sample size?", and it costs one extra fit per permutation, so it is off by
     default.
+
+    `attribution` chooses how `contributions` are computed. "permutation" (the
+    default) measures how much held-out AUC is lost when each feature is
+    shuffled. "impurity" is the forest's built-in importance, which was the
+    only method before 0.3.0; it is faster but is computed on the training
+    rows and favours features with many distinct values.
     """
+    if attribution not in ("permutation", "impurity"):
+        raise ValueError("attribution must be 'permutation' or 'impurity'")
+
     rng = np.random.default_rng(random_state)
 
     ref = reference.sample(min(len(reference), max_rows), random_state=random_state) \
@@ -198,7 +212,10 @@ def multivariate_drift(
         # keeps the p-value from ever being exactly zero.
         p_value = float((np.sum(np.array(null) >= auc) + 1) / (n_permutations + 1))
 
-    contributions = _attribute(X, y, random_state, sources)
+    if attribution == "permutation":
+        contributions = _attribute_permutation(X, y, random_state, sources)
+    else:
+        contributions = _attribute(X, y, random_state, sources)
 
     return MultivariateDrift(
         auc=round(auc, 4),
@@ -208,6 +225,7 @@ def multivariate_drift(
         n_current=int(len(cur)),
         n_features=int(X.shape[1]),
         contributions=contributions,
+        attribution=attribution,
     )
 
 
@@ -254,4 +272,74 @@ def _attribute(
     total = sum(folded.values()) or 1.0
     return {k: round(v / total, 4) for k, v in sorted(
         folded.items(), key=lambda kv: kv[1], reverse=True
+    )}
+
+
+def _attribute_permutation(
+    X: pd.DataFrame,
+    y: np.ndarray,
+    seed: int,
+    sources: list[str],
+    repeats: int = 5,
+    test_size: float = 0.3,
+) -> dict[str, float]:
+    """
+    Which features does separating the domains actually depend on?
+
+    Impurity importance answers a slightly different question — which columns
+    the trees split on — and answers it on the rows the forest was fitted to.
+    It is known to favour features with many distinct values, because they
+    offer more places to split whether or not the splits generalise. A
+    nine-level province column will outrank a two-level gender column on that
+    basis alone.
+
+    This fits on 70% of the stacked sample and, on the held-out 30%, shuffles
+    one source feature at a time and records how far the AUC falls. All of a
+    categorical feature's one-hot columns are shuffled together with the same
+    row order, so "province" is tested as one feature rather than nine. A
+    feature the classifier does not need costs nothing to shuffle.
+
+    Shares are the mean AUC drop per feature, floored at zero and normalised
+    to sum to one. If shuffling nothing costs anything — the batches were not
+    separable to begin with — every share is zero rather than an arbitrary
+    split of noise.
+    """
+    X_train, X_test, y_train, y_test = train_test_split(
+        X, y, test_size=test_size, stratify=y, random_state=seed
+    )
+    model = RandomForestClassifier(
+        n_estimators=120,
+        max_depth=8,
+        min_samples_leaf=20,
+        n_jobs=-1,
+        random_state=seed,
+    ).fit(X_train, y_train)
+
+    base = roc_auc_score(y_test, model.predict_proba(X_test)[:, 1])
+
+    groups: dict[str, list[str]] = {s: [] for s in sources}
+    for column in X.columns:
+        groups[_fold_to_source(column, sources)].append(column)
+
+    rng = np.random.default_rng(seed)
+    drops: dict[str, float] = {}
+    for source, columns in groups.items():
+        if not columns:
+            drops[source] = 0.0
+            continue
+        losses = []
+        for _ in range(repeats):
+            order = rng.permutation(len(X_test))
+            shuffled = X_test.copy()
+            shuffled[columns] = X_test[columns].to_numpy()[order]
+            losses.append(base - roc_auc_score(y_test, model.predict_proba(shuffled)[:, 1]))
+        drops[source] = max(float(np.mean(losses)), 0.0)
+
+    total = sum(drops.values())
+    # Drops this small are the shuffle's own noise around a classifier that
+    # had nothing to find; normalising them would manufacture an attribution.
+    if base - 0.5 < 0.02 or total < 1e-4:
+        return {s: 0.0 for s in sources}
+    return {k: round(v / total, 4) for k, v in sorted(
+        drops.items(), key=lambda kv: kv[1], reverse=True
     )}

@@ -335,6 +335,20 @@ def main() -> None:
             },
         )
 
+    mv = chosen_detail.get("multivariate")
+    if mv:
+        drivers = ", ".join(
+            f"{k} {v:.0%}" for k, v in list(mv["contributions"].items())[:3] if v > 0
+        )
+        p_text = f" · permutation p = {mv['p_value']:.3f}" if mv["p_value"] is not None else ""
+        st.caption(
+            f"**Multivariate drift:** reference and this batch are "
+            f"**{mv['separability']}** to a domain classifier "
+            f"(AUC {mv['auc']:.3f}, where 0.50 is chance){p_text}."
+            + (f" Driven by: {drivers}." if drivers else "")
+            + " This describes the inputs only; it is not evidence about model performance."
+        )
+
     perf = chosen_detail["performance"]
     if not perf.empty:
         row = perf.iloc[0]
@@ -354,13 +368,19 @@ def main() -> None:
     elif not perf.empty:
         colour = STATUS["significant"] if row["degraded"] else STATUS["stable"]
         verdict = "DEGRADED" if row["degraded"] else "within tolerance"
+        interval = ""
+        if "ci_low" in perf.columns and pd.notna(row["ci_low"]):
+            interval = (
+                f" &nbsp;<span style='color:{MUTED}'>95% CI "
+                f"{row['ci_low']:.4f} – {row['ci_high']:.4f}</span>"
+            )
         st.markdown(
             f"<div style='background:{PANEL};border:1px solid {GRID};"
             f"border-radius:10px;padding:14px 18px'>"
             f"<b>{row['metric']}</b> &nbsp;·&nbsp; baseline {row['baseline']:.4f} "
             f"&nbsp;→&nbsp; current {row['current']:.4f} &nbsp;"
             f"<span style='color:{colour};font-weight:600'>"
-            f"({row['relative_change']:+.1%}) {verdict}</span></div>",
+            f"({row['relative_change']:+.1%}) {verdict}</span>{interval}</div>",
             unsafe_allow_html=True,
         )
 

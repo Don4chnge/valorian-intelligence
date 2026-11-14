@@ -39,7 +39,7 @@ from sklearn.preprocessing import StandardScaler
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
-from valorian import ModelMonitor, multivariate_drift, score  # noqa: E402
+from valorian import ModelMonitor, score  # noqa: E402
 
 DATA = Path(__file__).resolve().parents[1] / "data"
 
@@ -125,6 +125,10 @@ def main() -> None:
         baseline_score=baseline,
         metric="roc_auc",
         performance_threshold=0.05,
+        # Univariate tests look at one feature at a time. This asks whether
+        # the batches are distinguishable at all, which catches shifts in the
+        # relationships between features that no single-feature test can see.
+        multivariate=True,
         db_path=db,
     )
 
@@ -146,14 +150,7 @@ def main() -> None:
         print(report.summary())
         print()
 
-        # Univariate tests look at one feature at a time. This asks whether
-        # the batches are distinguishable at all, which catches shifts in the
-        # relationships between features that no single-feature test can see.
-        mv = multivariate_drift(
-            reference[FEATURES], batch[FEATURES], categorical=CATEGORICAL
-        )
-        print(f"{mv}\n")
-
+        mv = report.multivariate
         ds = report.driftscore
         rows.append(
             {
@@ -163,11 +160,13 @@ def main() -> None:
                 "max_psi": round(report.drift["psi"].max(), 4),
                 "drifted": len(report.drifted_features),
                 "roc_auc": round(report.performance["current"], 4),
+                "ci95": f"[{report.performance['ci_low']:.3f}, {report.performance['ci_high']:.3f}]",
                 "vs_base": f"{report.performance['relative_change']:+.1%}",
                 "score": ds.score,
                 "band": ds.band,
                 "mv_auc": mv.auc,
                 "mv": mv.separability,
+                "mv_driver": mv.top_contributors(1)[0][0] if any(mv.contributions.values()) else "-",
             }
         )
 

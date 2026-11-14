@@ -15,7 +15,8 @@ import pandas as pd
 
 from .drift import FeatureDrift, detect_drift
 from .driftscore import DriftScore, score_report
-from .performance import MIN_PER_CLASS, MIN_SAMPLES, compare_performance
+from .multivariate import MultivariateDrift, multivariate_drift
+from .performance import MIN_PER_CLASS, MIN_SAMPLES, N_BOOTSTRAP, compare_performance
 from .quality import (
     NULL_RATE_FAILED,
     NULL_RATE_WARNING,
@@ -36,6 +37,7 @@ class MonitoringReport:
     alerts: list[str] = field(default_factory=list)
     run_id: int | None = None
     quality: DataQualityReport | None = None
+    multivariate: MultivariateDrift | None = None
 
     @property
     def driftscore(self) -> DriftScore:
@@ -66,6 +68,15 @@ class MonitoringReport:
             shift = "watch"
         else:
             shift = "stable"
+
+        # A joint-distribution shift with every marginal stable is exactly
+        # what the per-feature tests cannot see. Clear separability lifts a
+        # stable verdict to "watch"; mild separability (AUC under 0.65) is
+        # reported but does not, since at production sample sizes a
+        # classifier finds that much in almost any two real batches.
+        mv = self.multivariate
+        if shift == "stable" and mv is not None and mv.separability in ("clear", "trivial"):
+            shift = "watch"
 
         if not self.performance:
             perf = "not_observed"
@@ -152,14 +163,24 @@ class MonitoringReport:
         if self.performance:
             p = self.performance
             if p.get("evaluable", True):
+                interval = ""
+                if p.get("ci_low") is not None:
+                    interval = (
+                        f"  {p.get('confidence', 0.95):.0%} CI "
+                        f"[{p['ci_low']:.4f}, {p['ci_high']:.4f}]"
+                    )
                 lines += [
                     "",
                     f"{p['metric']}: {p['baseline']:.4f} -> {p['current']:.4f} "
                     f"({p['relative_change']:+.1%})"
-                    + ("  [DEGRADED]" if p["degraded"] else ""),
+                    + ("  [DEGRADED]" if p["degraded"] else "")
+                    + interval,
                 ]
             else:
                 lines += ["", f"{p['metric']}: not evaluated — {p.get('reason')}"]
+
+        if self.multivariate is not None:
+            lines += ["", str(self.multivariate)]
 
         if self.alerts:
             lines.append("")
@@ -192,6 +213,9 @@ class ModelMonitor:
         min_per_class: int = MIN_PER_CLASS,
         null_rate_warning: float = NULL_RATE_WARNING,
         null_rate_failed: float = NULL_RATE_FAILED,
+        n_bootstrap: int = N_BOOTSTRAP,
+        multivariate: bool = False,
+        multivariate_permutations: int = 0,
     ):
         if reference.empty:
             raise ValueError("reference dataframe is empty")
@@ -207,6 +231,11 @@ class ModelMonitor:
         self.min_per_class = min_per_class
         self.null_rate_warning = null_rate_warning
         self.null_rate_failed = null_rate_failed
+        self.n_bootstrap = n_bootstrap
+        # Off by default: it fits a forest per batch, which is seconds rather
+        # than milliseconds, and nobody should pay that without asking.
+        self.multivariate = multivariate
+        self.multivariate_permutations = multivariate_permutations
         self.store = MonitoringStore(db_path) if db_path else None
 
     def check(
@@ -257,15 +286,30 @@ class ModelMonitor:
                 threshold=self.performance_threshold,
                 min_samples=self.min_samples,
                 min_per_class=self.min_per_class,
+                n_bootstrap=self.n_bootstrap,
             ).to_dict()
+
+        mv = None
+        if self.multivariate and len(drift):
+            columns = drift["feature"].tolist()
+            try:
+                mv = multivariate_drift(
+                    self.reference[columns],
+                    usable[columns],
+                    categorical=[c for c in self.categorical if c in columns],
+                    n_permutations=self.multivariate_permutations,
+                )
+            except ValueError:
+                mv = None  # too few rows to cross-validate; nothing to report
 
         report = MonitoringReport(
             model_name=self.model_name,
             batch_label=batch_label,
             drift=drift,
             performance=performance,
-            alerts=self._build_alerts(drift, performance, quality),
+            alerts=self._build_alerts(drift, performance, quality, mv),
             quality=quality,
+            multivariate=mv,
         )
 
         if persist and self.store:
@@ -277,6 +321,7 @@ class ModelMonitor:
                 status=report.status,
                 health=report.health,
                 quality_issues=quality.issues,
+                multivariate=mv.to_dict() if mv else None,
             )
 
         return report
@@ -286,6 +331,7 @@ class ModelMonitor:
         drift: pd.DataFrame,
         performance: dict | None,
         quality: DataQualityReport | None = None,
+        multivariate: MultivariateDrift | None = None,
     ) -> list[str]:
         alerts = []
 
@@ -310,11 +356,32 @@ class ModelMonitor:
             more = f" (+{len(moderate) - 3} more)" if len(moderate) > 3 else ""
             alerts.append(f"Moderate drift on: {names}{more}")
 
-        if performance and performance["degraded"]:
+        if (
+            multivariate is not None
+            and multivariate.separability in ("clear", "trivial")
+            and significant.empty
+            and moderate.empty
+        ):
+            drivers = ", ".join(k for k, v in multivariate.top_contributors(3) if v > 0)
             alerts.append(
-                f"{performance['metric']} degraded {performance['relative_change']:+.1%} "
-                f"vs baseline — retraining likely needed"
+                f"Joint distribution shifted (multivariate AUC {multivariate.auc:.3f}) "
+                "with every feature individually stable"
+                + (f" — driven by: {drivers}" if drivers else "")
             )
+
+        if performance and performance["degraded"]:
+            if performance.get("confirmed") is False:
+                alerts.append(
+                    f"{performance['metric']} degraded {performance['relative_change']:+.1%} "
+                    f"vs baseline, but its {performance.get('confidence', 0.95):.0%} interval "
+                    f"[{performance['ci_low']:.4f}, {performance['ci_high']:.4f}] still "
+                    "includes the baseline — may be sampling noise; confirm on the next batch"
+                )
+            else:
+                alerts.append(
+                    f"{performance['metric']} degraded {performance['relative_change']:+.1%} "
+                    f"vs baseline — retraining likely needed"
+                )
 
         # The genuinely dangerous case: inputs look fine, outputs are wrong.
         # Usually means the target relationship moved, not the feature space.

@@ -45,6 +45,11 @@ _METRICS = {
 MIN_SAMPLES = 100
 MIN_PER_CLASS = 10
 
+# Bootstrap resamples behind the confidence interval. 200 is enough for a
+# stable 95% interval to two decimal places and costs about two seconds on a
+# 40 000-row batch; pass n_bootstrap=0 to skip it.
+N_BOOTSTRAP = 200
+
 PerformanceStatus = Literal["within_tolerance", "degraded", "insufficient_evidence"]
 
 
@@ -62,6 +67,33 @@ class PerformanceDrift:
     # because nothing was shown, NOT because the model is fine — read `status`.
     evaluable: bool = True
     reason: str | None = None
+    # Bootstrap interval for `current`. None when the batch was not evaluable
+    # or the interval was not requested.
+    ci_low: float | None = None
+    ci_high: float | None = None
+    confidence: float = 0.95
+
+    @property
+    def confirmed(self) -> bool | None:
+        """
+        Whether a flagged drop is distinguishable from sampling noise.
+
+        `degraded` compares a point estimate to a threshold. On a modest batch
+        that estimate moves by several percent from resampling alone, so a
+        drop just past the threshold may be nothing. This is True when the
+        whole interval lies on the bad side of the baseline, False when the
+        interval still includes it, and None when there is no drop to confirm
+        or no interval to judge it by.
+
+        The baseline is treated as a fixed number. It is itself an estimate,
+        and if it was measured on the training data it is optimistic; neither
+        is accounted for here.
+        """
+        if not self.degraded or self.ci_low is None or self.ci_high is None:
+            return None
+        if self.metric in _LOWER_IS_BETTER:
+            return self.ci_low > self.baseline
+        return self.ci_high < self.baseline
 
     @property
     def status(self) -> PerformanceStatus:
@@ -72,7 +104,39 @@ class PerformanceDrift:
     def to_dict(self) -> dict:
         d = asdict(self)
         d["status"] = self.status
+        d["confirmed"] = self.confirmed
         return d
+
+
+def _bootstrap_interval(
+    y: np.ndarray,
+    p: np.ndarray,
+    metric: str,
+    n_bootstrap: int,
+    confidence: float,
+    seed: int,
+) -> tuple[float | None, float | None]:
+    """Percentile bootstrap interval for the metric on this batch."""
+    rng = np.random.default_rng(seed)
+    n = y.shape[0]
+    values = []
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        for _ in range(n_bootstrap):
+            idx = rng.integers(0, n, n)
+            try:
+                value = score(y[idx], p[idx], metric=metric)
+            except ValueError:
+                continue  # a resample that drew a single class
+            if not math.isnan(value):
+                values.append(value)
+    # If most resamples were unusable the interval would describe only the
+    # lucky ones; better to report none.
+    if len(values) < max(20, n_bootstrap // 2):
+        return None, None
+    tail = (1.0 - confidence) / 2.0
+    low, high = np.quantile(values, [tail, 1.0 - tail])
+    return float(low), float(high)
 
 
 def _evidence_gap(y: np.ndarray, metric: str, min_samples: int, min_per_class: int) -> str | None:
@@ -106,6 +170,9 @@ def compare_performance(
     threshold: float = 0.05,
     min_samples: int = MIN_SAMPLES,
     min_per_class: int = MIN_PER_CLASS,
+    n_bootstrap: int = N_BOOTSTRAP,
+    confidence: float = 0.95,
+    random_state: int = 0,
 ) -> PerformanceDrift:
     """
     Compare a live batch against the model's baseline score.
@@ -119,6 +186,11 @@ def compare_performance(
     with `evaluable=False` and `status == "insufficient_evidence"`. It is never
     reported as within tolerance: too little data to detect a drop is not the
     same as no drop.
+
+    An evaluable batch also gets a percentile bootstrap interval for the
+    metric (`ci_low`, `ci_high`). The interval does not change `degraded`,
+    which stays a comparison of the point estimate to the threshold; it feeds
+    `confirmed`, which says whether a flagged drop is clear of sampling noise.
     """
     y = np.asarray(y_true)
     p = np.asarray(y_pred_proba)
@@ -161,6 +233,12 @@ def compare_performance(
     else:
         degraded = relative < -threshold
 
+    ci_low = ci_high = None
+    if reason is None and n_bootstrap > 0:
+        ci_low, ci_high = _bootstrap_interval(
+            y, p, metric, n_bootstrap, confidence, random_state
+        )
+
     return PerformanceDrift(
         metric=metric,
         baseline=float(baseline),
@@ -172,6 +250,9 @@ def compare_performance(
         n=int(y.shape[0]),
         evaluable=reason is None,
         reason=reason,
+        ci_low=ci_low,
+        ci_high=ci_high,
+        confidence=float(confidence),
     )
 
 
