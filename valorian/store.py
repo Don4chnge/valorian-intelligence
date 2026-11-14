@@ -60,6 +60,42 @@ CREATE TABLE IF NOT EXISTS multivariate (
     FOREIGN KEY (run_id) REFERENCES runs (run_id)
 );
 
+-- One row per prediction the model made, logged when it was made. Outcomes
+-- arrive later, sometimes months later, and are joined on prediction_id.
+CREATE TABLE IF NOT EXISTS predictions (
+    model_name    TEXT NOT NULL,
+    prediction_id TEXT NOT NULL,
+    run_id        INTEGER,
+    batch_label   TEXT,
+    predicted_at  TEXT NOT NULL,
+    score         REAL NOT NULL,
+    cohort        TEXT,
+    PRIMARY KEY (model_name, prediction_id)
+);
+
+CREATE TABLE IF NOT EXISTS outcomes (
+    model_name    TEXT NOT NULL,
+    prediction_id TEXT NOT NULL,
+    outcome       REAL NOT NULL,
+    observed_at   TEXT NOT NULL,
+    PRIMARY KEY (model_name, prediction_id)
+);
+
+CREATE TABLE IF NOT EXISTS cohort_performance (
+    run_id          INTEGER NOT NULL,
+    cohort          TEXT NOT NULL,
+    n               INTEGER,
+    metric          TEXT,
+    current         REAL,
+    ci_low          REAL,
+    ci_high         REAL,
+    baseline        REAL,
+    relative_change REAL,
+    status          TEXT,
+    FOREIGN KEY (run_id) REFERENCES runs (run_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_predictions_batch ON predictions (model_name, batch_label);
 CREATE INDEX IF NOT EXISTS idx_feature_drift_run ON feature_drift (run_id);
 CREATE INDEX IF NOT EXISTS idx_runs_model ON runs (model_name, created_at);
 """
@@ -88,8 +124,19 @@ _ADDED_COLUMNS = {
         "ci_low": "REAL",
         "ci_high": "REAL",
         "confidence": "REAL",
+        "label_coverage": "REAL",
+        "median_label_delay_days": "REAL",
     },
 }
+
+
+def _timestamp(value) -> str:
+    """Normalise a datetime, ISO string or None (meaning now) to UTC ISO-8601."""
+    if value is None:
+        return datetime.now(timezone.utc).isoformat(timespec="seconds")
+    stamp = pd.Timestamp(value)
+    stamp = stamp.tz_localize("UTC") if stamp.tzinfo is None else stamp.tz_convert("UTC")
+    return stamp.isoformat(timespec="seconds")
 
 
 def _nullable(value) -> float | None:
@@ -132,6 +179,7 @@ class MonitoringStore:
         health: dict | None = None,
         quality_issues: list[str] | None = None,
         multivariate: dict | None = None,
+        cohorts: pd.DataFrame | None = None,
     ) -> int:
         """Persist one monitoring run and return its run_id."""
         n_drifted = int(drift_frame["drifted"].sum()) if len(drift_frame) else 0
@@ -208,6 +256,9 @@ class MonitoringStore:
                     ),
                 )
 
+            if cohorts is not None and len(cohorts):
+                self._write_cohorts(conn, run_id, cohorts)
+
             if multivariate:
                 conn.execute(
                     """INSERT INTO multivariate
@@ -224,6 +275,206 @@ class MonitoringStore:
                 )
 
         return run_id
+
+    @staticmethod
+    def _write_cohorts(conn, run_id: int, cohorts: pd.DataFrame) -> None:
+        conn.execute("DELETE FROM cohort_performance WHERE run_id = ?", (run_id,))
+        conn.executemany(
+            """INSERT INTO cohort_performance
+               (run_id, cohort, n, metric, current, ci_low, ci_high,
+                baseline, relative_change, status)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            [
+                (
+                    run_id, r["cohort"], int(r["n"]), r["metric"],
+                    _nullable(r["current"]), _nullable(r["ci_low"]), _nullable(r["ci_high"]),
+                    _nullable(r["baseline"]), _nullable(r["relative_change"]), r["status"],
+                )
+                for _, r in cohorts.iterrows()
+            ],
+        )
+
+    # ------------------------------------------------------------------
+    # Predictions now, outcomes later
+    # ------------------------------------------------------------------
+
+    def log_predictions(
+        self,
+        model_name: str,
+        prediction_ids,
+        scores,
+        batch_label: str | None = None,
+        run_id: int | None = None,
+        cohorts=None,
+        predicted_at=None,
+    ) -> dict:
+        """
+        Record the scores a model produced, keyed by an ID outcomes can be
+        joined to later.
+
+        Safe to call twice with the same batch: an ID already on file is left
+        as it was first recorded and counted under `duplicates`, so a retried
+        job cannot double-count or rewrite history.
+        """
+        ids = [str(i) for i in prediction_ids]
+        scores = [float(s) for s in scores]
+        if len(ids) != len(scores):
+            raise ValueError(f"{len(ids)} prediction_ids but {len(scores)} scores")
+        if len(set(ids)) != len(ids):
+            raise ValueError("prediction_ids must be unique within a batch")
+        if cohorts is None:
+            cohort_values = [None] * len(ids)
+        else:
+            cohort_values = [None if pd.isna(c) else str(c) for c in cohorts]
+            if len(cohort_values) != len(ids):
+                raise ValueError(f"{len(ids)} prediction_ids but {len(cohort_values)} cohorts")
+
+        stamp = _timestamp(predicted_at)
+        with self._connect() as conn:
+            before = conn.total_changes
+            conn.executemany(
+                """INSERT OR IGNORE INTO predictions
+                   (model_name, prediction_id, run_id, batch_label, predicted_at, score, cohort)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)""",
+                [
+                    (model_name, i, run_id, batch_label, stamp, s, c)
+                    for i, s, c in zip(ids, scores, cohort_values)
+                ],
+            )
+            inserted = conn.total_changes - before
+        return {"logged": inserted, "duplicates": len(ids) - inserted}
+
+    def log_outcomes(
+        self,
+        model_name: str,
+        prediction_ids,
+        outcomes,
+        observed_at=None,
+        overwrite: bool = False,
+    ) -> dict:
+        """
+        Record what actually happened for predictions logged earlier.
+
+        Returns counts rather than raising, because a late-arriving outcomes
+        file is rarely perfectly clean and one bad row should not lose the
+        rest:
+
+            recorded     new outcomes stored
+            duplicates   already on file with the same value; ignored
+            conflicts    already on file with a DIFFERENT value; the original
+                         is kept unless `overwrite=True`
+            unknown      no prediction with that ID was ever logged; not stored
+        """
+        ids = [str(i) for i in prediction_ids]
+        values = [float(v) for v in outcomes]
+        if len(ids) != len(values):
+            raise ValueError(f"{len(ids)} prediction_ids but {len(values)} outcomes")
+        if any(v != v for v in values):
+            raise ValueError("outcomes contain NaN; leave unlabelled predictions out instead")
+        stamp = _timestamp(observed_at)
+
+        with self._connect() as conn:
+            known = {
+                r["prediction_id"] for r in conn.execute(
+                    "SELECT prediction_id FROM predictions WHERE model_name = ?", (model_name,)
+                )
+            }
+            existing = {
+                r["prediction_id"]: r["outcome"] for r in conn.execute(
+                    "SELECT prediction_id, outcome FROM outcomes WHERE model_name = ?",
+                    (model_name,),
+                )
+            }
+
+            new, changed = {}, {}
+            unknown, duplicates, conflicts = [], 0, []
+            for i, v in zip(ids, values):
+                if i not in known:
+                    unknown.append(i)
+                elif i in existing or i in new:
+                    previous = existing.get(i, new.get(i))
+                    if previous == v:
+                        duplicates += 1
+                    else:
+                        conflicts.append(i)
+                        if overwrite:
+                            changed[i] = v
+                else:
+                    new[i] = v
+
+            conn.executemany(
+                "INSERT INTO outcomes (model_name, prediction_id, outcome, observed_at) "
+                "VALUES (?, ?, ?, ?)",
+                [(model_name, i, v, stamp) for i, v in new.items() if i not in changed],
+            )
+            conn.executemany(
+                "INSERT OR REPLACE INTO outcomes (model_name, prediction_id, outcome, observed_at) "
+                "VALUES (?, ?, ?, ?)",
+                [(model_name, i, v, stamp) for i, v in changed.items()],
+            )
+
+        return {
+            "recorded": len(new),
+            "duplicates": duplicates,
+            "conflicts": len(conflicts),
+            "unknown": len(unknown),
+            "overwritten": len(changed),
+            "conflict_ids": conflicts[:20],
+            "unknown_ids": unknown[:20],
+        }
+
+    def labelled_predictions(self, model_name: str, batch_label: str | None) -> pd.DataFrame:
+        """Every prediction in a batch, with its outcome where one has arrived."""
+        query = """
+            SELECT p.prediction_id, p.run_id, p.predicted_at, p.score, p.cohort,
+                   o.outcome, o.observed_at
+            FROM predictions p
+            LEFT JOIN outcomes o
+              ON o.model_name = p.model_name AND o.prediction_id = p.prediction_id
+            WHERE p.model_name = ? AND p.batch_label IS ?
+            ORDER BY p.rowid
+        """
+        with self._connect() as conn:
+            return pd.read_sql_query(query, conn, params=(model_name, batch_label))
+
+    def update_performance(
+        self,
+        run_id: int,
+        performance: dict,
+        status: str,
+        performance_status: str,
+        coverage: float | None = None,
+        median_delay_days: float | None = None,
+        cohorts: pd.DataFrame | None = None,
+    ) -> None:
+        """
+        Attach (or refresh) the performance finding on a run that was stored
+        before its outcomes existed. Drift and quality rows are not touched.
+        """
+        with self._connect() as conn:
+            conn.execute("DELETE FROM performance WHERE run_id = ?", (run_id,))
+            conn.execute(
+                """INSERT INTO performance
+                   (run_id, metric, baseline, current, relative_change, degraded, n,
+                    evaluable, reason, ci_low, ci_high, confidence,
+                    label_coverage, median_label_delay_days)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    run_id, performance["metric"], performance["baseline"],
+                    _nullable(performance["current"]), _nullable(performance["relative_change"]),
+                    int(performance["degraded"]), performance.get("n"),
+                    int(performance.get("evaluable", True)), performance.get("reason"),
+                    _nullable(performance.get("ci_low")), _nullable(performance.get("ci_high")),
+                    _nullable(performance.get("confidence")),
+                    _nullable(coverage), _nullable(median_delay_days),
+                ),
+            )
+            conn.execute(
+                "UPDATE runs SET status = ?, performance_status = ? WHERE run_id = ?",
+                (status, performance_status, run_id),
+            )
+            if cohorts is not None and len(cohorts):
+                self._write_cohorts(conn, run_id, cohorts)
 
     def history(self, model_name: str | None = None, limit: int = 100) -> pd.DataFrame:
         """Run-level history, newest first."""
@@ -271,6 +522,10 @@ class MonitoringStore:
             mv = conn.execute(
                 "SELECT * FROM multivariate WHERE run_id = ?", (run_id,)
             ).fetchone()
+            cohorts = pd.read_sql_query(
+                "SELECT * FROM cohort_performance WHERE run_id = ? ORDER BY cohort",
+                conn, params=(run_id,),
+            )
 
         multivariate = None
         if mv is not None:
@@ -283,6 +538,7 @@ class MonitoringStore:
             "features": features,
             "performance": perf,
             "multivariate": multivariate,
+            "cohorts": cohorts,
         }
 
     def to_json(self, run_id: int) -> str:

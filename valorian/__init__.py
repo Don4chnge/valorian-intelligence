@@ -19,17 +19,19 @@ from .drift import (
     PSI_SIGNIFICANT,
 )
 from .driftscore import DriftScore, band_for, compute_driftscore, score_report
-from .monitor import ModelMonitor, MonitoringReport
+from .monitor import ModelMonitor, MonitoringReport, OutcomeReport
 from .multivariate import MultivariateDrift, multivariate_drift, separability_for
 from .quality import DataQualityReport, check_quality
-from .performance import PerformanceDrift, compare_performance, rolling_performance, score
+from .performance import PerformanceDrift, cohort_performance, compare_performance, rolling_performance, score
 from .store import MonitoringStore
 
-__version__ = "0.4.0"
+__version__ = "0.5.0"
 
 __all__ = [
     "ModelMonitor",
     "MonitoringReport",
+    "OutcomeReport",
+    "cohort_performance",
     "MonitoringStore",
     "DriftScore",
     "compute_driftscore",
