@@ -8,12 +8,13 @@
 
 Most machine learning projects stop at the point a model is trained and a test-set score is reported. That is the easy half. The harder problem is that a model which scored well in January can be quietly wrong by August, because the world it was trained on has moved and nothing in the system announces it.
 
-Valorian Intelligence watches a deployed model and answers two questions on every batch of production data:
+Valorian Intelligence watches a deployed model and answers three questions on every batch of production data, and keeps the answers separate:
 
-1. **Have the inputs changed?** (data drift) — Population Stability Index, Kolmogorov–Smirnov, chi-square
-2. **Has the model stopped working?** (concept drift) — rolling performance against a frozen baseline
+1. **Did the batch arrive intact?** (data quality) — missing, extra and type-changed columns, null-rate spikes
+2. **Have the inputs changed?** (data drift) — Population Stability Index, Kolmogorov–Smirnov, chi-square, plus a multivariate domain-classifier test
+3. **Has the model stopped working?** (measured performance) — the model's metric on labelled outcomes against a frozen baseline
 
-The second question is the one that matters, and the one most monitoring setups miss.
+The third question is the one that matters, and the one most monitoring setups miss. It is also the only one that is evidence about the model: a shift in the inputs is a reason to investigate, not proof that anything broke.
 
 ---
 
@@ -27,7 +28,7 @@ So Valorian leads with **effect size (PSI)** and reports the p-value alongside i
 |---|---|
 | < 0.10 | Stable |
 | 0.10 – 0.25 | Moderate shift — investigate |
-| > 0.25 | Significant shift — model likely degraded |
+| > 0.25 | Significant shift — check measured performance |
 
 Two design decisions follow from actually thinking about how this fails:
 
@@ -46,14 +47,14 @@ Two design decisions follow from actually thinking about how this fails:
 | 2026-04 | nothing | 0.009 | ok | −1.4% |
 | 2026-05 | nothing | 0.006 | ok | −0.2% |
 | 2026-06 | income distribution shifts down | 0.270 | **critical** | −7.5% |
-| 2026-07 | deeper income shift + province mix change | 0.899 | **critical** | +0.1% |
+| 2026-07 | deeper income shift + province mix change | 0.899 | **warning** | +0.1% |
 | 2026-08 | income→default relationship weakens | 0.011 | **critical** | **−11.3%** |
 
 Three things worth reading off this table:
 
 **The clean months stay quiet.** A detector that fires on everything is worse than no detector, because people learn to ignore it. Months 3–5 are noise-level.
 
-**Month 7 is the false-comfort case.** Two features drifted severely (PSI 0.90 and 0.45) but ROC-AUC barely moved. Input drift does not automatically mean broken model — this is why alerting on drift alone produces alert fatigue.
+**Month 7 is the false-alarm case.** Two features drifted severely (PSI 0.90 and 0.43) but ROC-AUC barely moved. Input drift does not automatically mean broken model — this is why alerting on drift alone produces alert fatigue. The batch is a `warning` (go and look), not `critical`. Until 0.2.0 it was reported as `critical`, which contradicted this paragraph; see [What a status means](#what-a-status-means).
 
 **Month 8 is the case this project exists for.** Every input distribution looks perfectly normal — max PSI 0.011, nothing to see. Meanwhile the model has lost 11.3% of its discriminative power because the relationship between income and default changed underneath it. Input-only monitoring is blind here. Valorian raises it explicitly:
 
@@ -65,6 +66,29 @@ Alerts:
 ```
 
 ---
+
+## What a status means
+
+A single status word hides which question was answered. Every report therefore carries three separate findings in `report.health`:
+
+| Dimension | States | The question |
+|---|---|---|
+| `data_quality` | healthy · warning · failed | Did the batch arrive in the shape the model expects? |
+| `input_shift` | stable · watch · significant | Do the inputs still look like the reference data? |
+| `performance` | within_tolerance · degraded · insufficient_evidence · not_observed | Is the model still right, measured on outcomes? |
+
+`report.status` is a rule-based roll-up of those three:
+
+- **critical** — measured performance has degraded, or the batch failed its data-quality checks
+- **warning** — inputs shifted, a data-quality warning, or labels too thin to judge performance
+- **ok** — none of the above
+
+Two rules are deliberate. **Input drift alone never reaches `critical`**, however large. And **unmeasured performance is never reported as healthy**: with no labels the dimension reads `not_observed`, and with fewer than 100 labelled rows or fewer than 10 rows of the rarest class it reads `insufficient_evidence` and the status is at least `warning`. Both floors are arguments (`min_samples`, `min_per_class`), as are the null-rate thresholds (a rise of 5 percentage points warns, 20 fails). They are conventions, not derived constants.
+
+Data quality exists as its own dimension because PSI cannot see it. Nulls are dropped before the statistics are computed, so a feature that is suddenly 60% null can score a PSI near zero on the rows that remain, and a column that stops arriving is simply not compared. `check_quality` reports both.
+
+`report.legacy_status` keeps the pre-0.2.0 rule for anyone who depends on it.
+
 ---
 
 ## DriftScore
@@ -84,7 +108,7 @@ Three weighted components: performance against baseline (0.70), worst-feature PS
 
 Performance dominates because input drift predicts trouble rather than evidencing it, and this dataset contains the counterexample directly. Month 07 has the worst input drift in the series and a model performing at baseline; month 08 has no detectable input drift and a model that has lost 11% of its power. Weighting those equally would score the healthy month as the crisis. It does not go higher than 0.70 because above roughly 0.80 the input terms stop moving the number at all, and a formula with two decorative terms should not claim to include them.
 
-When labels have not arrived yet — which for credit or churn can mean months - the performance component cannot be computed. The score then falls back to the input terms alone and reports `mode="inputs_only"`. That number answers a different question and should not be plotted on the same line as a full score without saying so.
+When labels have not arrived yet — which for credit or churn can mean months — or there are too few of them to judge, the performance component cannot be computed. The score then falls back to the input terms alone and reports `mode="inputs_only"`. That number answers a different question and should not be plotted on the same line as a full score without saying so.
 
 **Calibration status:** these weights were tuned against the synthetic demo series, which is circular — the same data that motivated the design was used to check it. They are a starting hypothesis, not validated constants. They were subsequently checked against real QLFS data (see below), where they produced no false alarms across five quarters.
 
@@ -174,6 +198,9 @@ report = monitor.check(
 
 print(report.summary())
 report.status            # 'ok' | 'warning' | 'critical'
+report.health            # {'data_quality': 'healthy', 'input_shift': 'stable',
+                         #  'performance': 'degraded'}
+report.quality.issues    # e.g. ['monthly_income: null rate 0.4% -> 31.0% (+30.6 points)']
 report.drifted_features  # ['monthly_income', 'province']
 ```
 
@@ -195,7 +222,7 @@ pip install -r requirements.txt
 
 python demo/run_demo.py     # generates valorian.db and prints six reports
 streamlit run app.py        # dashboard over the results
-pytest -q                   # 23 tests
+pytest -q                   # 108 tests
 ```
 
 ---
@@ -204,12 +231,17 @@ pytest -q                   # 23 tests
 
 ```
 valorian/
+  quality.py       schema and null-rate checks — what drift statistics cannot see
   drift.py         PSI, KS, chi-square — feature-level data drift
-  performance.py   baseline comparison and rolling metrics — concept drift
-  monitor.py       ModelMonitor orchestrator, alert logic, status rules
+  multivariate.py  domain-classifier test for shifts in the joint distribution
+  performance.py   baseline comparison, evidence floors, rolling metrics
+  driftscore.py    0-100 composite score, with an inputs-only mode
+  monitor.py       ModelMonitor orchestrator, health dimensions, status rules
   store.py         SQLite persistence and history queries
 demo/run_demo.py   six months of simulated production with injected drift
-tests/             23 tests, including "does not fire on clean data"
+demo/run_qlfs.py   the same monitoring on real Stats SA labour force data
+tests/             108 tests, including "does not fire on clean data" and
+                   "never reports unmeasured performance as healthy"
 app.py             Streamlit dashboard
 ```
 
@@ -221,9 +253,13 @@ Stated plainly, because a monitoring tool that oversells itself is a liability:
 
 - **Concept drift detection needs labels, so it runs on a lag.** You learn that August's predictions were wrong only once August's outcomes arrive. For credit or churn that lag can be months. Input drift is the early warning; performance drift is the confirmation.
 - **PSI is sensitive to bin count and to small samples.** Below roughly 1,000 rows per batch the estimate gets noisy. Ten quantile bins is a convention, not a derived optimum.
-- **Features are checked one at a time.** A shift in the *correlation* between two features — each individually stable — will not be caught. Multivariate drift detection is on the roadmap.
+- **The per-feature tests look at one feature at a time.** A shift in the *correlation* between two features — each individually stable — is invisible to them. `multivariate_drift` covers that case, but it is a separate call: its result is not yet part of `ModelMonitor.check`, the status, the DriftScore or the stored run.
+- **Multivariate attribution is indicative only.** It uses the forest's built-in importances, which favour features with many categories. Treat "Province carries over half the signal" as a lead to check, not a measurement.
+- **Performance is a point estimate.** The evidence floors stop a verdict on a batch too small to support one, but there is no confidence interval yet, so a drop just past the threshold on a modest batch may still be noise.
+- **Data-quality checks compare against the reference frame, not a declared contract.** Renamed columns show up as one missing plus one extra; value ranges and invalid categories are not validated.
 - **The thresholds are conventions, not laws.** 0.10 and 0.25 come from credit risk practice. Any serious deployment should calibrate them against its own history of what did and did not turn out to matter.
-- **The demo uses synthetic data.** That is deliberate — it is the only way to have ground truth about drift — but performance on synthetic data is not evidence of performance on real data. Validating against a real dataset is the next milestone.
+- **The headline demo uses synthetic data.** That is deliberate — it is the only way to have ground truth about drift — but performance on synthetic data is not evidence of performance on real data. The QLFS run above is one real-data check; it is a single dataset in which nothing broke, so it shows the detector stays quiet, not that it catches real failures.
+- **Alpha software.** Local SQLite, no ingestion API, no access control. Not production-ready.
 
 ---
 

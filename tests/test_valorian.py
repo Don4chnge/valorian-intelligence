@@ -204,7 +204,12 @@ def test_monitor_end_to_end_flags_planted_drift(reference, tmp_path):
     drifted = reference.sample(1_500, random_state=2).copy()
     drifted["income"] *= 4.0
     dirty = monitor.check(drifted, batch_label="dirty")
-    assert dirty.status == "critical"
+    # Input drift is a reason to investigate, not evidence the model is wrong,
+    # so on its own it is a warning. Before 0.2.0 this asserted "critical";
+    # that rule is preserved as legacy_status and still checked here.
+    assert dirty.status == "warning"
+    assert dirty.legacy_status == "critical"
+    assert dirty.health["input_shift"] == "significant"
     assert "income" in dirty.drifted_features
     assert dirty.alerts
 

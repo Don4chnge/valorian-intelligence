@@ -48,6 +48,7 @@ known outcomes, not as validated constants.
 from __future__ import annotations
 
 from dataclasses import dataclass, asdict
+import math
 from typing import Literal
 
 # Component weights when performance is available.
@@ -157,6 +158,14 @@ def compute_driftscore(
     psi_c = _psi_component(max_psi)
     breadth_c = _breadth_component(n_drifted, n_features)
 
+    # A metric that could not be computed (single-class batch, too few labels)
+    # arrives as NaN. Every comparison against NaN is False, so without this it
+    # would fall through as "no drop" and score a perfect 100 on the component
+    # carrying 70% of the weight. Unmeasured performance is not good
+    # performance: treat it exactly like labels that have not arrived.
+    if relative_change is not None and math.isnan(relative_change):
+        relative_change = None
+
     if relative_change is None:
         # Reweight the two input terms to fill the space performance vacated,
         # keeping their 2:1 ratio, so the number stays on a 0-100 scale.
@@ -197,5 +206,7 @@ def score_report(drift_frame, performance: dict | None = None) -> DriftScore:
     n_features = len(drift_frame)
     n_drifted = int(drift_frame["drifted"].sum()) if n_features else 0
     max_psi = float(drift_frame["psi"].max()) if n_features else 0.0
-    rel = performance["relative_change"] if performance else None
+    rel = None
+    if performance and performance.get("evaluable", True):
+        rel = performance["relative_change"]
     return compute_driftscore(max_psi, n_drifted, n_features, rel)
