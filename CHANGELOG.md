@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.5.0
+
+Outcomes that arrive after the predictions, and performance by cohort. No
+existing behaviour changes: `check` with `y_true` works exactly as before.
+
+### Added
+
+- **Delayed outcomes.** `check(..., prediction_ids=...)` logs a batch's scores;
+  `record_outcomes` attaches outcomes whenever they arrive; `evaluate(batch)`
+  measures the batch on what has arrived, reports label coverage and median
+  delay, and updates the stored run.
+- **A coverage rule.** Until 80% of a batch has an outcome
+  (`min_label_coverage`) the metric is reported as "so far" and the verdict is
+  `insufficient_evidence`. Early outcomes are a biased sample; a test builds
+  that case and the partial-label metric overstates the truth by more than
+  0.05 AUC.
+- **Safe re-sends.** Predictions and outcomes already on file are counted and
+  left alone. A contradicting outcome is reported as a conflict and the
+  original kept unless `overwrite=True`. Outcomes for unknown IDs are reported
+  and not stored.
+- **Cohorts.** `cohort_performance` and `check(..., cohorts=...)` give
+  per-cohort metric, interval and status. A cohort is judged only against its
+  own baseline (`cohort_baselines`); without one it is `no_baseline`. An alert
+  is raised when a cohort degrades while the overall metric holds.
+- Dashboard shows label coverage and the cohort table.
+- `demo/run_delayed_labels.py`: a batch scored with no outcomes, evaluated
+  at day 75 and after maturity. Run in CI.
+- 24 new tests (148 -> 172).
+
 ## 0.4.0
 
 Benchmark release. `benchmarks/run_benchmark.py` measures false-positive and

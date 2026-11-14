@@ -278,3 +278,85 @@ def rolling_performance(
         rows.append({"batch": batch, "metric": metric, "score": value, "n": len(chunk)})
 
     return pd.DataFrame(rows)
+
+
+def cohort_performance(
+    y_true,
+    y_pred_proba,
+    cohorts,
+    metric: str = "roc_auc",
+    baselines: dict | None = None,
+    threshold: float = 0.05,
+    min_samples: int = MIN_SAMPLES,
+    min_per_class: int = MIN_PER_CLASS,
+    n_bootstrap: int = N_BOOTSTRAP,
+    random_state: int = 0,
+) -> pd.DataFrame:
+    """
+    Score the model separately within each cohort (region, product, channel).
+
+    An overall metric is an average, and an average can hold steady while one
+    group inside it gets much worse. This returns one row per cohort with the
+    metric, its bootstrap interval and the row count.
+
+    A verdict needs something to compare against, and the overall baseline is
+    the wrong thing: a model is routinely better on some groups than others,
+    so a cohort that has always scored 0.68 against an overall 0.76 would be
+    reported as degraded forever. `baselines` maps a cohort to *its own*
+    baseline score. A cohort without one gets its metric and interval and the
+    status `no_baseline`; nothing is inferred.
+
+        within_tolerance | degraded     compared with the cohort's baseline
+        insufficient_evidence           too few rows, or too few of one class
+        no_baseline                     measured, but nothing to compare with
+
+    Reading many cohorts at once is a multiple-comparison problem: with twenty
+    of them, one will look bad by chance. `confirmed` narrows that but does
+    not remove it.
+    """
+    frame = pd.DataFrame(
+        {
+            "y": np.asarray(y_true),
+            "p": np.asarray(y_pred_proba),
+            "cohort": pd.Series(np.asarray(cohorts, dtype=object)).fillna("(missing)").astype(str).to_numpy(),
+        }
+    )
+    baselines = {str(k): v for k, v in (baselines or {}).items()}
+
+    rows = []
+    for cohort, chunk in frame.groupby("cohort", sort=True):
+        baseline = baselines.get(cohort)
+        result = compare_performance(
+            baseline=baseline if baseline is not None else 1.0,
+            y_true=chunk["y"].to_numpy(),
+            y_pred_proba=chunk["p"].to_numpy(),
+            metric=metric,
+            threshold=threshold,
+            min_samples=min_samples,
+            min_per_class=min_per_class,
+            n_bootstrap=n_bootstrap,
+            random_state=random_state,
+        )
+        if not result.evaluable:
+            status = "insufficient_evidence"
+        elif baseline is None:
+            status = "no_baseline"
+        else:
+            status = result.status
+
+        rows.append(
+            {
+                "cohort": cohort,
+                "n": result.n,
+                "metric": metric,
+                "current": result.current if result.evaluable else float("nan"),
+                "ci_low": result.ci_low,
+                "ci_high": result.ci_high,
+                "baseline": baseline if baseline is not None else float("nan"),
+                "relative_change": result.relative_change if baseline is not None and result.evaluable else float("nan"),
+                "status": status,
+                "confirmed": result.confirmed if baseline is not None else None,
+                "reason": result.reason,
+            }
+        )
+    return pd.DataFrame(rows)
