@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.6.0
+
+Closes the gaps the earlier releases documented as limits, and redesigns the
+dashboard.
+
+### Changed behaviour
+
+- **The out-of-range check uses the reference's outermost 0.1% rather than its
+  minimum and maximum** once the reference has 1 500 rows or more. The literal
+  range widens as the reference grows, and detection of 5% of rows moved into
+  the tail had fallen to 80% at 20 000 rows; see `benchmarks/` for the figure
+  now. Below 1 500 rows nothing changes.
+- **A cohort's drop is `confirmed` only against an interval widened for the
+  number of cohorts judged.** New columns `ci_low_adjusted` and
+  `ci_high_adjusted`. With twenty unchanged cohorts, at least one was falsely
+  confirmed in 8 of 15 batches before and in none after.
+
+### Added
+
+- **Group-aware multivariate test.** `multivariate_drift(groups_reference=,
+  groups_current=)` keeps each group in one cross-validation fold and permutes
+  whole groups. For data where rows are clustered (households, customers), the
+  row-level permutation test understates the noise badly.
+- `demo/permutation_check.py` now permutes households. The QLFS shift holds:
+  p = 0.002 at 500 household-level permutations.
+- `demo/qlfs_province_check.py`: the Province drift is in the sample, not the
+  population. Gauteng's share of respondents rose from 15.0% to 24.3% while
+  its weighted population share stayed at 27.2%. The README's "hypothesis
+  tested and rejected" was wrong and is corrected.
+- `MonitoringStore.performance_history`.
+- **Dashboard redesign.** One sentence stating what the selected batch shows,
+  a strip of the three health dimensions for every batch, and a section per
+  question. Performance is charted with its intervals. Red is reserved for a
+  broken batch or degraded performance; input shift is orange however large.
+- 10 new tests (172 -> 182).
+
 ## 0.5.0
 
 Outcomes that arrive after the predictions, and performance by cohort. No

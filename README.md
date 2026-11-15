@@ -6,6 +6,8 @@
 
 **ML observability: drift detection and performance monitoring for models already in production.**
 
+![The dashboard: one sentence on what the batch shows, then data quality, input shift and performance for every batch](docs/dashboard.png)
+
 Most machine learning projects stop at the point a model is trained and a test-set score is reported. That is the easy half. The harder problem is that a model which scored well in January can be quietly wrong by August, because the world it was trained on has moved and nothing in the system announces it.
 
 Valorian Intelligence watches a deployed model and answers three questions on every batch of production data, and keeps the answers separate:
@@ -143,7 +145,7 @@ Features: gender, age, education status, province, geography type. Target: emplo
 
 **Data drift and concept drift separated cleanly.** The employment rate climbs from 33.5% to 37.8% across the window — a real post-COVID labour market recovery. Model performance holds. The population changed; the relationship between demographics and employment did not. Monitoring the target rate alone would have raised an alarm here, and it would have been wrong.
 
-**A hypothesis was tested and rejected.** Stats SA switched from telephone to face-to-face interviewing at 2022 Q1, and this window was chosen specifically to straddle that break. Nothing was detected — 2022 Q1 has the lowest PSI in the series. The interview mode did not move the distribution of age, gender, education, province or geography type. Reasonable in hindsight, but it was a prediction that could have failed and didn't hold.
+**A hypothesis was tested, rejected, and then turned out to be right.** Stats SA switched from telephone to face-to-face interviewing at 2022 Q1, and this window was chosen specifically to straddle that break. The per-feature tests found nothing: 2022 Q1 has the lowest PSI in the series, and no feature crosses 0.10 in any quarter. The first version of this write-up concluded that the change of interview mode had not moved the inputs. That was wrong, and the section on multivariate drift below shows how.
 
 ### Multivariate drift: what the per-feature tests missed
 
@@ -165,21 +167,33 @@ The two columns disagree from 2022 Q2 onward. Province never crosses the 0.10 PS
 
 That figure was first reported as "over half", from the random forest's built-in importances. Those are computed on the training rows and favour features with many distinct values, and Province has nine levels against two for gender, so the claim was re-tested with permutation importance on held-out rows (shuffle one feature, measure the AUC lost). The finding held and got stronger: the built-in importances had been giving age a 16–20% share that disappears on held-out data. In 2022 Q1, where the batches are indistinguishable, the built-in method still split its attribution 44/25/17/8/7 across the five features; the held-out method reports nothing to attribute.
 
-A separability of 0.579 is close enough to chance that it deserves scepticism rather than a headline, so it was tested rather than asserted. Refitting on shuffled domain labels, none of 500 permutations reached the observed AUC (p = 0.002, the smallest value 500 shuffles can report). The shift is small, and it is not noise.
+A separability of 0.579 (0.576 once every household is kept inside a single cross-validation fold) is close enough to chance that it deserves scepticism rather than a headline, so it was tested rather than asserted. Reassigning whole households to a quarter at random and refitting, none of 500 permutations reached the observed AUC (p = 0.002, the smallest value 500 shuffles can report). The shift is small, and it is not noise.
 
 **What this does and does not say.** The joint distribution of the monitored features moved, mostly through Province. It does not say the model broke: ROC-AUC held within roughly 1% across all fifteen months. This is data drift without concept drift — the population changed, the relationship between demographics and employment did not. The two questions are separate and the tooling answers them separately.
 
-**The honest caveats.** This was first run with 20 permutations, which cannot report anything below p = 0.048 however strong the signal; it has been re-run at 500. Three limits remain:
+That test shuffles whole households rather than individual respondents. The QLFS samples dwellings, so everyone in a household shares a province and a geography type, and 41,000 respondents are closer to 19,000 independent observations. Shuffling rows one at a time treats them as 41,000 and understates the noise; on clustered synthetic data the row-level test called unchanged batches "significant" nearly every time. An earlier run here used 20 row-level shuffles and reported p = 0.048, which is simply the smallest value 20 shuffles can produce.
 
-- *The permutation test assumes rows are exchangeable, and these are not quite.* The QLFS samples dwellings, not people, so respondents in one household share a province and a geography type. Shuffling individual rows understates the noise, so the true p-value is somewhat larger than 0.002. A test that shuffled whole households would be the correct one.
-- *The four quarters are not independent.* The QLFS is a rotating panel: a sampled dwelling stays in for four consecutive quarters and a quarter of them are replaced each time. The reference quarter therefore shares dwellings with 2022 Q1–Q3, and consecutive monitored quarters share most of theirs. "Stable across four quarters" is partly the same households being counted again.
-- *Only 2023 Q1 was permutation-tested.*
+### What moved: the sample, not the country
 
-What is defensible is narrower: a shift too small for threshold-based univariate monitoring to register is detectable by a joint-distribution test, and it sits in Province.
+A shift in Province admits two readings. People moved between provinces, or the mix of people the survey managed to interview changed. `demo/qlfs_province_check.py` separates them by comparing each province's share of the *respondents* with its share of the *population*, the latter using Stats SA's survey weights, which are benchmarked to independent population estimates.
 
-**A possible explanation, not an established one.** The provincial mix moving after 2022 Q1 is what one would expect if telephone collection reached some provinces' households less well than face-to-face does, with the composition recovering as each rotation group was re-interviewed in person; the batch size climbing from 31 000 to 41 000 over the same window fits that. If so, the "hypothesis tested and rejected" above was rejected too early: the mode change did not show up at the 2022 Q1 boundary, but may be what the multivariate test is picking up over the following year. This has not been checked against Stats SA's response rates by province and should be read as a lead.
+| Gauteng | 2021 Q4 | 2022 Q1 | 2022 Q2 | 2022 Q3 | 2022 Q4 | 2023 Q1 |
+|---|---|---|---|---|---|---|
+| Share of respondents | 15.0% | 15.7% | 22.8% | 23.9% | 24.2% | 24.3% |
+| Share of population (weighted) | 27.2% | 27.2% | 27.2% | 27.2% | 27.2% | 27.2% |
+| Respondents | 3,691 | 4,888 | 8,185 | 9,488 | 9,963 | 10,064 |
 
-Reproduce with `python demo/permutation_check.py` (about 15 minutes).
+The population did not move: no province's weighted share changes by more than 0.1 points across the six quarters. The sample did. In the last telephone quarter Gauteng supplied 15% of respondents against 27% of the population; a year after face-to-face interviewing resumed it supplied 24%, and its respondent count had nearly tripled while the survey as a whole grew by two thirds. Eastern Cape, KwaZulu-Natal and Limpopo, over-represented under telephone collection, fell back correspondingly.
+
+So the drift is real and it is not in the world. The survey's coverage of the country changed, in step with the change of collection mode, and the model's inputs changed with it. Three things follow.
+
+- **The reference quarter was the unrepresentative one.** A model trained on 2021 Q4 learned from a sample in which the country's largest province was under-represented by nearly half. The later quarters are closer to the truth than the baseline is.
+- **PSI called this stable.** Gauteng's share of respondents rose by nine points and Province's PSI peaked at 0.074. The 0.10 convention is not sensitive to a change of that size spread over nine categories. The multivariate test was, mildly, and attribution pointed at the right column.
+- **Timing fits the mode change but does not prove it.** The jump comes in 2022 Q2 rather than Q1. Half of the 2022 Q1 households were carried over from the telephone quarter through the rotating panel, which would delay the effect by about that much, but this analysis cannot rule out some other reason for response to recover in the same months.
+
+**What is still limited.** The QLFS is a rotating panel: a sampled dwelling stays in for four consecutive quarters. In this data 48% of 2022 Q1's households were already in the reference quarter, 23% of Q2's and 9% of Q3's, so those quarters are not independent of the reference and "the finding repeats across quarters" is partly the same households counted again. The permutation test handles clustering within a quarter, not overlap between quarters, and only 2023 Q1 (no overlap) was permutation-tested.
+
+Reproduce with `python demo/permutation_check.py` (about 30 minutes) and `python demo/qlfs_province_check.py`.
 
 ### Data quality note
 
@@ -305,7 +319,7 @@ pip install -r requirements.txt
 
 python demo/run_demo.py     # generates valorian.db and prints six reports
 streamlit run app.py        # dashboard over the results
-pytest -q                   # 172 tests
+pytest -q                   # 182 tests
 ```
 
 ---
@@ -324,11 +338,12 @@ valorian/
 demo/run_demo.py   six months of simulated production with injected drift
 demo/run_qlfs.py   the same monitoring on real Stats SA labour force data
 demo/run_delayed_labels.py   outcomes arriving months after the predictions
+demo/qlfs_province_check.py  is the Province drift in the population or the sample?
 benchmarks/        false-positive and detection rates across seeds and sample
                    sizes, with Evidently run on the same samples
-tests/             172 tests, including "does not fire on clean data" and
+tests/             182 tests, including "does not fire on clean data" and
                    "never reports unmeasured performance as healthy"
-app.py             Streamlit dashboard
+app.py             Streamlit dashboard, organised around the three questions
 ```
 
 ---
@@ -339,11 +354,11 @@ Stated plainly, because a monitoring tool that oversells itself is a liability:
 
 - **Concept drift detection needs labels, so it runs on a lag.** You learn that August's predictions were wrong only once August's outcomes arrive. For credit or churn that lag can be months. Input drift is the early warning; performance drift is the confirmation.
 - **Label coverage guards against biased early outcomes; it does not correct for them.** At 80% coverage the missing fifth can still differ from the rest, and nothing here models *why* an outcome is late. The delayed-label path has been tested on constructed cases only, not on a real portfolio with real maturation.
-- **Reading many cohorts invites false alarms.** With twenty cohorts one will look bad by chance. `confirmed` narrows that; there is no correction across cohorts. Cohort baselines have to be supplied — nothing estimates them.
+- **Cohort verdicts are corrected for how many cohorts there are, conservatively.** A cohort's drop is `confirmed` only if an interval widened for the number of cohorts judged still excludes its baseline. With twenty unchanged cohorts of 150 rows, at least one was falsely confirmed in 8 of 15 batches without the correction and none with it. The price is power on small cohorts, and the widening rests on a normal approximation. Cohort baselines have to be supplied — nothing estimates them.
 - **One cohort label per prediction.** Intersections (province × product) have to be built into the label by the caller.
 - **PSI is sensitive to bin count and to small samples.** The noise floor stops small batches raising false alarms, but it does so by demanding a larger shift before anything is flagged: at 200 rows a side a mean shift of a quarter of a standard deviation is caught about a third of the time. Ten quantile bins is a convention, not a derived optimum.
 - **Small shifts on large batches are reported as stable.** That is what an effect-size threshold means, and it is a choice. In the benchmark a 0.25 sd mean shift is caught by a KS test every time from 1,000 rows up and by Valorian never at 5,000. The KS and chi-square p-values are reported alongside for anyone who needs that sensitivity.
-- **The out-of-range check weakens as the reference grows.** A larger reference has a wider range of its own. With 5% of rows shifted into the upper tail, detection fell from 99% at 1,000 rows to 80% at 20,000.
+- **The out-of-range check only sees the far tails.** It counts values beyond the reference's outermost 0.1% at each end. A shift that thickens the tails without reaching that far, or that hollows out the middle, is left to PSI.
 - **A hundred labels is a floor, not a recommendation.** In the benchmark an unchanged model was flagged `degraded` in 18% of batches of 100 labelled rows and 13% of batches of 300; requiring `confirmed` cut that to 2%. From 1,000 labels up the false-alarm rate was 1% or less.
 - **The per-feature tests look at one feature at a time.** A shift in the *correlation* between two features — each individually stable — is invisible to them. `ModelMonitor(multivariate=True)` adds the joint-distribution test, but it is off by default because it fits a forest per batch, and it does not feed the DriftScore.
 - **Only clear multivariate separability changes the status.** An AUC of 0.65 or more with every feature individually stable lifts input shift to `watch`. Mild separability (0.55–0.65) is reported and stored but does not, because at production sample sizes a classifier finds that much between almost any two real batches. Those cutoffs are conventions.
