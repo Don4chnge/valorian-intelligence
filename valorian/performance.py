@@ -19,6 +19,7 @@ from typing import Literal
 
 import numpy as np
 import pandas as pd
+from scipy.stats import norm
 from sklearn import metrics
 
 # Metrics where a *lower* score is better, so degradation is an increase.
@@ -311,8 +312,13 @@ def cohort_performance(
         no_baseline                     measured, but nothing to compare with
 
     Reading many cohorts at once is a multiple-comparison problem: with twenty
-    of them, one will look bad by chance. `confirmed` narrows that but does
-    not remove it.
+    of them, one will look bad by chance. So `confirmed` here is stricter than
+    for a single comparison. `ci_low` / `ci_high` are each cohort's ordinary
+    95% interval; `ci_low_adjusted` / `ci_high_adjusted` widen it so that all
+    the judged cohorts' intervals hold together 95% of the time (Bonferroni),
+    and a drop is `confirmed` only if the adjusted interval excludes the
+    cohort's baseline. The widening uses the bootstrap spread with a normal
+    approximation, since 200 resamples cannot resolve a 0.25% tail directly.
     """
     frame = pd.DataFrame(
         {
@@ -359,4 +365,27 @@ def cohort_performance(
                 "reason": result.reason,
             }
         )
-    return pd.DataFrame(rows)
+    table = pd.DataFrame(rows)
+    if table.empty:
+        return table
+
+    judged = table["status"].isin(["within_tolerance", "degraded"]) & table["ci_low"].notna()
+    table["ci_low_adjusted"] = np.nan
+    table["ci_high_adjusted"] = np.nan
+    if judged.any():
+        family = int(judged.sum())
+        spread = (table.loc[judged, "ci_high"] - table.loc[judged, "ci_low"]) / (
+            2 * norm.ppf(0.975)
+        )
+        half = norm.ppf(1 - 0.05 / (2 * family)) * spread
+        table.loc[judged, "ci_low_adjusted"] = table.loc[judged, "current"] - half
+        table.loc[judged, "ci_high_adjusted"] = table.loc[judged, "current"] + half
+
+        degraded = judged & (table["status"] == "degraded")
+        if metric in _LOWER_IS_BETTER:
+            clear = table["ci_low_adjusted"] > table["baseline"]
+        else:
+            clear = table["ci_high_adjusted"] < table["baseline"]
+        table["confirmed"] = table["confirmed"].astype(object)
+        table.loc[degraded, "confirmed"] = clear[degraded].astype(bool)
+    return table

@@ -25,7 +25,7 @@ from .quality import DataQualityReport, check_quality
 from .performance import PerformanceDrift, cohort_performance, compare_performance, rolling_performance, score
 from .store import MonitoringStore
 
-__version__ = "0.5.0"
+__version__ = "0.6.0"
 
 __all__ = [
     "ModelMonitor",

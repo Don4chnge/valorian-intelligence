@@ -25,8 +25,11 @@ counts as drift (`psi_noise_floor`).
 Values beyond the reference range. Quantile bins with open outer edges keep
 such values rather than dropping them, but they land in a bin that already
 holds 10% of the data, where a few percent of extreme values barely move the
-PSI. The share of out-of-range values is therefore measured directly
-(`out_of_range`) and can raise the severity on its own.
+PSI. The share of values beyond the reference's extremes is therefore measured
+directly (`out_of_range`) and can raise the severity on its own. "Extremes"
+means the outermost 0.1% of the reference at each end rather than its literal
+minimum and maximum, because the literal range keeps widening as the reference
+grows and the check would weaken with it.
 """
 
 from __future__ import annotations
@@ -46,6 +49,8 @@ _EPS = 1e-6  # guards log(0) when a bin is empty in one sample
 # min/max for a numeric feature, or in a category it never had. Conventions.
 RANGE_MODERATE = 0.02
 RANGE_SIGNIFICANT = 0.10
+# The reference's most extreme 0.1% at each end marks the edge of its range.
+EXTREME_TAIL = 0.001
 _NOISE_QUANTILE = 0.95
 
 Severity = Literal["stable", "moderate", "significant"]
@@ -116,8 +121,9 @@ class FeatureDrift:
     missing_current: float = 0.0
     # The PSI that sampling noise alone would produce at these sample sizes.
     psi_noise_floor: float = 0.0
-    # Share of current values the reference never contained. An end of the
-    # range is counted only when it holds more than chance would produce.
+    # Share of current values beyond the reference's extremes (its outermost
+    # 0.1% at each end, or an unseen category). An end is counted only when
+    # it holds more than chance would produce.
     out_of_range: float = 0.0
 
     @property
@@ -144,32 +150,47 @@ def _psi_from_counts(ref_counts: np.ndarray, cur_counts: np.ndarray) -> float:
     return float(np.sum((cur_pct - ref_pct) * np.log(cur_pct / ref_pct)))
 
 
-def _side_p_value(k: int, n_current: int, n_reference: int) -> float:
+def _side_p_value(m: int, n_current: int, n_reference: int, k: int = 1) -> float:
     """
-    Chance that k or more current values lie beyond one end of the reference.
+    Chance that m or more current values lie beyond the reference's k-th most
+    extreme value at one end.
 
     If both samples come from one distribution, every ordering of the pooled
-    values is equally likely. "At least k current values exceed the reference
-    maximum" is the same event as "the k largest pooled values are all
-    current", whose probability is C(n_cur, k) / C(n_ref + n_cur, k). Exact,
-    and free of any assumption about the distribution's shape.
+    values is equally likely. "At least m current values exceed the
+    reference's k-th largest" is the same event as "the top m + k - 1 pooled
+    values contain at most k - 1 reference values", which is a hypergeometric
+    probability. Exact, and free of any assumption about the distribution's
+    shape. With k = 1 it is the chance that the m largest pooled values are
+    all current: C(n_cur, m) / C(n_ref + n_cur, m).
     """
-    if k <= 0:
+    if m <= 0:
         return 1.0
-    if k > n_current:
-        return 0.0
-    i = np.arange(k)
-    return float(np.exp(np.sum(
-        np.log(n_current - i) - np.log(n_reference + n_current - i)
-    )))
+    total = n_reference + n_current
+    draws = min(m + k - 1, total)
+    return float(stats.hypergeom.cdf(k - 1, total, n_reference, draws))
+
+
+def _extreme_rank(n_reference: int) -> int:
+    """
+    Which reference order statistic marks the edge of "extreme".
+
+    The minimum and maximum are the natural edge for a small reference, but
+    they move outward as the reference grows: 20 000 draws from a normal
+    reach past four standard deviations, so values that far out stop counting
+    as out of range at all. Using the k-th most extreme value, with k a fixed
+    0.1% of the reference, keeps the edge at the same place in the
+    distribution however large the reference is. Below 1 500 rows k is 1 and
+    this is the plain minimum and maximum.
+    """
+    return max(1, int(round(EXTREME_TAIL * n_reference)))
 
 
 def _out_of_range(
-    n_below: int, n_above: int, n_current: int, n_reference: int, n_comparisons: int = 1
+    ref: np.ndarray, cur: np.ndarray, n_comparisons: int = 1
 ) -> float:
     """
-    Share of current values beyond the reference min/max, counting only an end
-    where there are more of them than chance explains.
+    Share of current values beyond the reference's extremes, counting only an
+    end where there are more of them than chance explains.
 
     A fresh sample routinely pokes a little past the range of an earlier one:
     with equal sizes, three values beyond the old maximum happens one time in
@@ -177,13 +198,16 @@ def _out_of_range(
     0.005, so 0.01 across both, shared across the features being compared)
     and contributes only if it passes.
     """
-    if n_current == 0:
+    if cur.size == 0:
         return 0.0
+    k = _extreme_rank(ref.size)
+    ordered = np.sort(ref)
+    low, high = ordered[k - 1], ordered[-k]
     counted = sum(
-        k for k in (n_below, n_above)
-        if _side_p_value(k, n_current, n_reference) < 0.005 / max(n_comparisons, 1)
+        m for m in (int((cur < low).sum()), int((cur > high).sum()))
+        if _side_p_value(m, cur.size, ref.size, k) < 0.005 / max(n_comparisons, 1)
     )
-    return counted / n_current
+    return counted / cur.size
 
 
 def numeric_drift(
@@ -239,10 +263,7 @@ def numeric_drift(
     cur_counts, _ = np.histogram(cur, bins=edges)
     psi = _psi_from_counts(ref_counts, cur_counts)
     floor = psi_noise_floor(ref.size, cur.size, edges.size - 1, n_comparisons)
-    outside = _out_of_range(
-        int((cur < ref.min()).sum()), int((cur > ref.max()).sum()),
-        cur.size, ref.size, n_comparisons,
-    )
+    outside = _out_of_range(ref, cur, n_comparisons)
 
     ks = stats.ks_2samp(ref, cur)
 

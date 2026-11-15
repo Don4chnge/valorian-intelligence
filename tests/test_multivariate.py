@@ -275,3 +275,72 @@ def test_high_cardinality_noise_feature_does_not_steal_attribution():
 
     assert perm.contributions["flag"] > 0.95
     assert perm.contributions["many"] < imp.contributions["many"]
+
+
+# --------------------------------------------------------------------------
+# Clustered rows: households, customers
+# --------------------------------------------------------------------------
+
+def clustered(n_groups, seed, shift=0.0, size=8):
+    """Rows come in groups that share most of their value, like a household."""
+    rng = np.random.default_rng(seed)
+    centre = rng.normal(shift, 1, n_groups)
+    return (
+        pd.DataFrame({
+            "a": np.repeat(centre, size) + rng.normal(0, 0.1, n_groups * size),
+            "b": rng.normal(0, 1, n_groups * size),
+        }),
+        np.repeat(np.arange(n_groups), size),
+    )
+
+
+def test_row_level_permutation_overstates_significance_on_clustered_data():
+    """
+    The reason the grouped test exists. Both batches come from one
+    distribution, but 100 groups of 8 near-identical rows behave like 100
+    observations, not 800. Treating rows as independent finds "drift" that
+    is only the luck of which groups landed in which batch.
+    """
+    rows_reject, groups_reject = 0, 0
+    for seed in range(4):
+        ref, g_ref = clustered(100, seed)
+        cur, g_cur = clustered(100, 1_000 + seed)
+        rows = multivariate_drift(ref, cur, n_permutations=9, attribution="impurity")
+        grouped = multivariate_drift(
+            ref, cur, n_permutations=9, attribution="impurity",
+            groups_reference=g_ref, groups_current=g_cur,
+        )
+        # Nine shuffles can report nothing below 0.1; reaching it means no
+        # shuffle matched the observed separability.
+        rows_reject += rows.p_value <= 0.1
+        groups_reject += grouped.p_value <= 0.1
+    assert rows_reject >= 3           # "significant" nearly every time, wrongly
+    assert groups_reject <= 1
+
+
+def test_grouped_test_still_detects_real_drift():
+    ref, g_ref = clustered(150, 1)
+    cur, g_cur = clustered(150, 2, shift=1.5)
+    result = multivariate_drift(
+        ref, cur, n_permutations=9, groups_reference=g_ref, groups_current=g_cur
+    )
+    assert result.p_value <= 0.1
+    assert result.n_groups == 300
+
+
+def test_groups_must_be_given_for_both_batches_and_match_their_length():
+    ref, g_ref = clustered(50, 3)
+    cur, g_cur = clustered(50, 4)
+    with pytest.raises(ValueError, match="both"):
+        multivariate_drift(ref, cur, groups_reference=g_ref)
+    with pytest.raises(ValueError, match="one entry per row"):
+        multivariate_drift(ref, cur, groups_reference=g_ref[:-1], groups_current=g_cur)
+
+
+def test_groups_survive_subsampling():
+    ref, g_ref = clustered(400, 5)
+    cur, g_cur = clustered(400, 6)
+    result = multivariate_drift(
+        ref, cur, max_rows=1_000, groups_reference=g_ref, groups_current=g_cur
+    )
+    assert result.n_reference == 1_000 and result.n_groups <= 800

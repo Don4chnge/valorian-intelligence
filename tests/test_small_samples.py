@@ -156,3 +156,44 @@ def test_twenty_unchanged_features_rarely_raise_any_alarm_on_a_small_batch():
 
 def test_noise_floor_rises_with_the_number_of_features_compared():
     assert psi_noise_floor(200, 200, 10, n_comparisons=20) > psi_noise_floor(200, 200, 10)
+
+
+# --------------------------------------------------------------------------
+# The out-of-range check on a large reference
+# --------------------------------------------------------------------------
+
+def test_out_of_range_check_does_not_weaken_as_the_reference_grows():
+    """
+    Min/max widen with sample size: 20 000 normal draws reach past 4 sd, so
+    values at 4 sd stopped counting and detection fell to 80% in the
+    benchmark. The edge is now the reference's outermost 0.1%.
+    """
+    def tail(rng, n):
+        x = rng.normal(0, 1, n)
+        x[: int(0.05 * n)] = rng.normal(4, 1, int(0.05 * n))
+        return x
+
+    for n in (1_000, 20_000):
+        flagged = [
+            numeric_drift("x", r.normal(0, 1, n), tail(r, n)).drifted
+            for r in (np.random.default_rng(s) for s in range(40))
+        ]
+        assert rate(flagged) >= 0.95, n
+
+
+def test_large_unchanged_samples_report_nothing_out_of_range():
+    shares = [
+        numeric_drift("x", r.normal(0, 1, 20_000), r.normal(0, 1, 20_000)).out_of_range
+        for r in (np.random.default_rng(s) for s in range(60))
+    ]
+    assert rate(s > 0 for s in shares) <= 0.05
+    assert max(shares) < 0.02
+
+
+def test_heavily_tied_data_is_not_flagged():
+    """Integer-coded features pile up on their extremes; that is not a shift."""
+    flagged = [
+        numeric_drift("age", r.integers(15, 65, 5_000), r.integers(15, 65, 5_000)).drifted
+        for r in (np.random.default_rng(s) for s in range(40))
+    ]
+    assert rate(flagged) == 0.0

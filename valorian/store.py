@@ -489,6 +489,22 @@ class MonitoringStore:
         with self._connect() as conn:
             return pd.read_sql_query(query, conn, params=params)
 
+    def performance_history(self, model_name: str | None = None) -> pd.DataFrame:
+        """Every run's performance row, oldest first — the decay curve with its intervals."""
+        query = """
+            SELECT r.run_id, r.batch_label, p.*
+            FROM runs r
+            JOIN performance p ON p.run_id = r.run_id
+        """
+        params: tuple = ()
+        if model_name:
+            query += " WHERE r.model_name = ?"
+            params = (model_name,)
+        query += " ORDER BY r.run_id"
+        with self._connect() as conn:
+            frame = pd.read_sql_query(query, conn, params=params)
+        return frame.loc[:, ~frame.columns.duplicated()]
+
     def feature_history(self, feature: str, model_name: str | None = None) -> pd.DataFrame:
         """PSI trajectory for one feature — the view you want when plotting."""
         query = """
