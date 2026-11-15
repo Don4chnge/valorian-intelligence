@@ -168,13 +168,13 @@ numeric,5% of rows into upper tail,fire,1000,KS p < 0.05,144,300,0.48,0.4241,0.5
 numeric,5% of rows into upper tail,fire,1000,evidently PSI >= 0.10,100,100,1.0,0.963,1.0
 numeric,5% of rows into upper tail,fire,1000,evidently default,52,100,0.52,0.4232,0.6154
 numeric,5% of rows into upper tail,fire,5000,raw PSI >= 0.10 (valorian <= 0.3),0,300,0.0,0.0,0.0126
-numeric,5% of rows into upper tail,fire,5000,valorian drifted,283,300,0.9433,0.9111,0.9643
+numeric,5% of rows into upper tail,fire,5000,valorian drifted,300,300,1.0,0.9874,1.0
 numeric,5% of rows into upper tail,fire,5000,valorian significant,0,300,0.0,0.0,0.0126
 numeric,5% of rows into upper tail,fire,5000,KS p < 0.05,300,300,1.0,0.9874,1.0
 numeric,5% of rows into upper tail,fire,5000,evidently PSI >= 0.10,100,100,1.0,0.963,1.0
 numeric,5% of rows into upper tail,fire,5000,evidently default,100,100,1.0,0.963,1.0
 numeric,5% of rows into upper tail,fire,20000,raw PSI >= 0.10 (valorian <= 0.3),0,300,0.0,0.0,0.0126
-numeric,5% of rows into upper tail,fire,20000,valorian drifted,240,300,0.8,0.7511,0.8413
+numeric,5% of rows into upper tail,fire,20000,valorian drifted,300,300,1.0,0.9874,1.0
 numeric,5% of rows into upper tail,fire,20000,valorian significant,0,300,0.0,0.0,0.0126
 numeric,5% of rows into upper tail,fire,20000,KS p < 0.05,300,300,1.0,0.9874,1.0
 numeric,5% of rows into upper tail,fire,20000,evidently PSI >= 0.10,100,100,1.0,0.963,1.0

@@ -349,3 +349,59 @@ def test_cohorts_logged_with_predictions_are_used_when_outcomes_arrive(tmp_path)
 def test_report_without_cohorts_has_none(setup, features):
     monitor, _, y, p = setup
     assert monitor.check(features, y_true=y, y_pred_proba=p).cohorts is None
+
+
+# --------------------------------------------------------------------------
+# Many cohorts at once
+# --------------------------------------------------------------------------
+
+def many_cohorts(n_cohorts=20, n_each=400, seed=0, strength=0.35):
+    rng = np.random.default_rng(seed)
+    y = rng.binomial(1, 0.4, n_cohorts * n_each)
+    p = np.clip(strength * y + rng.uniform(0, 1 - strength, n_cohorts * n_each), 0, 1)
+    return y, p, np.repeat([f"c{i:02d}" for i in range(n_cohorts)], n_each)
+
+
+def test_adjusted_interval_is_wider_and_only_for_judged_cohorts():
+    y, p, c = many_cohorts()
+    healthy = score(*scored(50_000, 0.35, 99))
+    baselines = {f"c{i:02d}": healthy for i in range(19)}       # c19 has none
+    table = cohort_performance(y, p, c, baselines=baselines).set_index("cohort")
+
+    judged = table.drop(index="c19")
+    assert (judged["ci_low_adjusted"] < judged["ci_low"]).all()
+    assert (judged["ci_high_adjusted"] > judged["ci_high"]).all()
+    assert np.isnan(table.loc["c19", "ci_low_adjusted"])
+
+
+def test_twenty_unchanged_cohorts_rarely_produce_a_confirmed_drop():
+    """
+    Each cohort alone has a few percent chance of a 'confirmed' false alarm.
+    Across twenty modest cohorts (150 rows, ROC-AUC near 0.72) that compounds
+    to about half of all batches; the adjusted interval is what stops it.
+    """
+    y, p, _ = many_cohorts(1, 200_000, seed=99, strength=0.2)
+    healthy = score(y, p)
+    baselines = {f"c{i:02d}": healthy for i in range(20)}
+    any_confirmed, any_unadjusted = 0, 0
+    for seed in range(15):
+        y, p, c = many_cohorts(n_each=150, seed=seed, strength=0.2)
+        table = cohort_performance(y, p, c, baselines=baselines)
+        degraded = table[table["status"] == "degraded"]
+        any_confirmed += bool((degraded["confirmed"] == True).any())  # noqa: E712
+        any_unadjusted += bool((degraded["ci_high"] < degraded["baseline"]).any())
+    assert any_unadjusted >= 5        # the problem, without the adjustment
+    assert any_confirmed <= 1
+
+
+def test_real_cohort_drop_is_still_confirmed_among_many():
+    y, p, c = many_cohorts(seed=3)
+    bad = c == "c07"
+    p = p.copy()
+    p[bad] = np.random.default_rng(4).uniform(0, 1, bad.sum())   # signal gone
+    healthy = score(*scored(50_000, 0.35, 99))
+    table = cohort_performance(
+        y, p, c, baselines={f"c{i:02d}": healthy for i in range(20)}
+    ).set_index("cohort")
+    assert table.loc["c07", "status"] == "degraded"
+    assert table.loc["c07", "confirmed"] is True or table.loc["c07", "confirmed"] == True  # noqa: E712

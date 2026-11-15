@@ -56,6 +56,9 @@ BATCHES = [
 FEATURES = ["Q13GENDER", "Q14AGE", "Education_Status", "Province", "Geo_type_code"]
 CATEGORICAL = ["Q13GENDER", "Education_Status", "Province", "Geo_type_code"]
 TARGET = "Status"
+# Household identifier. The survey samples dwellings, so rows that share one
+# are not independent; the permutation check shuffles whole households.
+HOUSEHOLD = "UQNO"
 
 # Status: 1 employed, 2 unemployed, 3 discouraged work-seeker,
 # 4 other not economically active. Collapsed to employed vs not.
@@ -77,7 +80,9 @@ def load(filename: str) -> pd.DataFrame:
             f"Missing {path}.\nDownload the QLFS CSVs into data/ — see data/README.md"
         )
 
-    frame = pd.read_csv(path, usecols=FEATURES + [TARGET], low_memory=False)
+    frame = pd.read_csv(
+        path, usecols=FEATURES + [TARGET, HOUSEHOLD], dtype={HOUSEHOLD: str}, low_memory=False
+    )
     frame[TARGET] = pd.to_numeric(frame[TARGET], errors="coerce")
     frame.loc[frame[TARGET] > 10, TARGET] = np.nan
     frame = frame[

@@ -37,12 +37,15 @@ opening the outer bins was what kept such values from being missed. It keeps
 them from being *dropped*, but they land in a bin that already holds a tenth of
 the data, where they barely move the statistic. Evidently's PSI caught all of
 them. Valorian now measures the out-of-range share directly, with an exact test
-for whether it exceeds chance, and catches 80–100%.
+for whether it exceeds chance, and catches 90% at 200 rows and 99–100% from
+500 rows up.
 
-The 80% is at 20 000 rows, and it is a real limit rather than noise. A larger
-reference sample has a wider range of its own, so fewer of the shifted values
-fall outside it. A check built on the reference's extreme quantiles rather than
-its minimum and maximum would not weaken this way.
+The first version of that check used the reference's literal minimum and
+maximum, and detection fell to 80% at 20 000 rows: a larger reference has a
+wider range of its own, so fewer of the shifted values fell outside it. Since
+0.6.0 the edge is the reference's outermost 0.1% at each end, which stays at
+the same place in the distribution however large the reference is. The
+false-positive rows did not move.
 
 ## Where Valorian is weaker, by design
 

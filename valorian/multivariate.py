@@ -51,7 +51,12 @@ from typing import Literal
 import numpy as np
 import pandas as pd
 from sklearn.ensemble import RandomForestClassifier
-from sklearn.model_selection import StratifiedKFold, cross_val_predict, train_test_split
+from sklearn.model_selection import (
+    StratifiedGroupKFold,
+    StratifiedKFold,
+    cross_val_predict,
+    train_test_split,
+)
 from sklearn.metrics import roc_auc_score
 
 AUC_INDISTINGUISHABLE = 0.55
@@ -82,6 +87,8 @@ class MultivariateDrift:
     n_features: int
     contributions: dict[str, float] = field(default_factory=dict)
     attribution: Attribution = "permutation"
+    # Number of groups (households, customers) when the test was group-aware.
+    n_groups: int | None = None
 
     @property
     def drifted(self) -> bool:
@@ -139,8 +146,15 @@ def _prepare(
     return combined, labels, shared
 
 
-def _fit_auc(X: pd.DataFrame, y: np.ndarray, seed: int, folds: int) -> float:
-    """Cross-validated AUC for separating the two domains."""
+def _fit_auc(
+    X: pd.DataFrame, y: np.ndarray, seed: int, folds: int, groups: np.ndarray | None = None
+) -> float:
+    """
+    Cross-validated AUC for separating the two domains.
+
+    With `groups`, every row of a group is kept in the same fold, so the
+    classifier is never scored on a household it has already seen part of.
+    """
     model = RandomForestClassifier(
         n_estimators=120,
         max_depth=8,          # shallow on purpose: an unconstrained forest
@@ -149,8 +163,13 @@ def _fit_auc(X: pd.DataFrame, y: np.ndarray, seed: int, folds: int) -> float:
         n_jobs=-1,
         random_state=seed,
     )
-    cv = StratifiedKFold(n_splits=folds, shuffle=True, random_state=seed)
-    proba = cross_val_predict(model, X, y, cv=cv, method="predict_proba")[:, 1]
+    if groups is None:
+        cv = StratifiedKFold(n_splits=folds, shuffle=True, random_state=seed)
+    else:
+        cv = StratifiedGroupKFold(n_splits=folds, shuffle=True, random_state=seed)
+    proba = cross_val_predict(
+        model, X, y, cv=cv, groups=groups, method="predict_proba"
+    )[:, 1]
     return float(roc_auc_score(y, proba))
 
 
@@ -163,6 +182,8 @@ def multivariate_drift(
     n_permutations: int = 0,
     random_state: int = 0,
     attribution: Attribution = "permutation",
+    groups_reference=None,
+    groups_current=None,
 ) -> MultivariateDrift:
     """
     Detect drift in the joint distribution by trying to tell the batches apart.
@@ -182,9 +203,21 @@ def multivariate_drift(
     shuffled. "impurity" is the forest's built-in importance, which was the
     only method before 0.3.0; it is faster but is computed on the training
     rows and favours features with many distinct values.
+
+    `groups_reference` and `groups_current` give one group ID per row — a
+    household, a customer, a device — for data where rows within a group are
+    not independent. People in one household share a province, so shuffling
+    them individually treats 40 000 respondents as 40 000 independent draws
+    when there are really 19 000 households, and understates the noise. With
+    groups, cross-validation keeps each group in one fold and the permutation
+    test reassigns whole groups to a batch rather than single rows. A group
+    that appears in both batches is treated as two groups; overlap *between*
+    batches is not modelled.
     """
     if attribution not in ("permutation", "impurity"):
         raise ValueError("attribution must be 'permutation' or 'impurity'")
+    if (groups_reference is None) != (groups_current is None):
+        raise ValueError("give groups for both batches or for neither")
 
     rng = np.random.default_rng(random_state)
 
@@ -199,14 +232,35 @@ def multivariate_drift(
         )
 
     X, y, sources = _prepare(ref, cur, categorical)
-    auc = _fit_auc(X, y, random_state, folds)
+
+    groups = None
+    if groups_reference is not None:
+        if len(groups_reference) != len(reference) or len(groups_current) != len(current):
+            raise ValueError("groups must have one entry per row of their batch")
+        # Align to whichever rows survived subsampling, and keep the two
+        # batches' IDs apart so a shared ID does not merge them into one group.
+        g_ref = pd.Series(np.asarray(groups_reference), index=reference.index).loc[ref.index]
+        g_cur = pd.Series(np.asarray(groups_current), index=current.index).loc[cur.index]
+        groups = np.concatenate([
+            ("r:" + g_ref.astype(str)).to_numpy(), ("c:" + g_cur.astype(str)).to_numpy()
+        ])
+
+    auc = _fit_auc(X, y, random_state, folds, groups)
 
     p_value = None
     if n_permutations > 0:
+        if groups is not None:
+            group_ids, row_group = np.unique(groups, return_inverse=True)
+            # Every group belongs wholly to one batch, so it has one label.
+            group_label = np.zeros(len(group_ids))
+            group_label[row_group] = y
         null = []
         for i in range(n_permutations):
-            shuffled = rng.permutation(y)
-            null.append(_fit_auc(X, shuffled, random_state + i + 1, folds))
+            if groups is None:
+                shuffled = rng.permutation(y)
+            else:
+                shuffled = rng.permutation(group_label)[row_group]
+            null.append(_fit_auc(X, shuffled, random_state + i + 1, folds, groups))
         # +1 in numerator and denominator: the observed value is itself one
         # draw from the null under the exchangeability assumption, and this
         # keeps the p-value from ever being exactly zero.
@@ -226,6 +280,7 @@ def multivariate_drift(
         n_features=int(X.shape[1]),
         contributions=contributions,
         attribution=attribution,
+        n_groups=None if groups is None else int(len(np.unique(groups))),
     )
 
 
