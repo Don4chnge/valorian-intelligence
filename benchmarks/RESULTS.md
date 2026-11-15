@@ -13,12 +13,12 @@ current sample. 95% Wilson intervals for every cell are in `results.csv`.
 
 | | |
 |---|---|
-| valorian | 0.4.0 |
+| valorian | 0.6.0 |
 | evidently | 0.7.23 |
 | numpy / pandas / scipy / scikit-learn | 2.5.3 / 3.0.5 / 1.18.1 / 1.9.1 |
 | Python | 3.13.18 on Linux x86_64, 2 CPUs |
 | Mode | full |
-| Runtime | 1618 s |
+| Runtime | 1619 s |
 
 Trials per cell: categorical 100-300, many features 300, multivariate 40, numeric 100-300, performance 300.
 Where a family shows a range, the smaller number is the Evidently rows, which
@@ -62,7 +62,7 @@ to 1 000 rows and normalised Wasserstein distance at a 0.1 threshold above that.
 |  |  | evidently PSI >= 0.10 | 100% | 100% | 100% | 100% | 100% |
 |  |  | evidently default | 62% | 100% | 100% | 100% | 100% |
 | 5% of rows into upper tail | fire | raw PSI >= 0.10 (valorian <= 0.3) | 57% | 2% | 0% | 0% | 0% |
-|  |  | valorian drifted | 90% | 100% | 99% | 94% | 80% |
+|  |  | valorian drifted | 90% | 100% | 99% | 100% | 100% |
 |  |  | valorian significant | 2% | 0% | 0% | 0% | 0% |
 |  |  | KS p < 0.05 | 8% | 20% | 48% | 100% | 100% |
 |  |  | evidently PSI >= 0.10 | 100% | 100% | 100% | 100% | 100% |
